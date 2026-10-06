@@ -1,13 +1,3 @@
--- =========================================================
---  Crystallized Booga Booga  |  Rayfield Edition (v3)
---  ⚠ No webhook / no logger
---  Logic ported from ASTER hub: Gold Farm, Auras, AutoChest,
---  Pinch, Quick Hut, Auto Drop, Coin Presser, Auto Craft,
---  Auto Shop, Behind Queen Ant, Crystal Guardian, Auto Sand,
---  Voodoo, Staff Detection, Item/Wandering/Tribe ESP, etc.
--- =========================================================
-
--- 1) Load Rayfield
 local Rayfield
 do
     local ok, result = pcall(function()
