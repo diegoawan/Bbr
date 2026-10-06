@@ -1,0 +1,3794 @@
+-- =========================================================
+--  Crystallized Booga Booga  |  Rayfield Edition (v3)
+--  ⚠ No webhook / no logger
+--  Logic ported from ASTER hub: Gold Farm, Auras, AutoChest,
+--  Pinch, Quick Hut, Auto Drop, Coin Presser, Auto Craft,
+--  Auto Shop, Behind Queen Ant, Crystal Guardian, Auto Sand,
+--  Voodoo, Staff Detection, Item/Wandering/Tribe ESP, etc.
+-- =========================================================
+
+-- 1) Load Rayfield
+local Rayfield
+do
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+    end)
+    if not ok or not result then
+        ok, result = pcall(function()
+            return loadstring(game:HttpGet(
+                "https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"
+            ))()
+        end)
+    end
+    if not ok or not result then
+        return warn("[Crystallized] Failed to load Rayfield:", result)
+    end
+    Rayfield = result
+end
+
+local Window = Rayfield:CreateWindow({
+    Name = "Crystallized Booga Booga v3",
+    LoadingTitle = "Loading Crystallized v3...",
+    LoadingSubtitle = "by sleepy_21x (Rayfield + ASTER merge)",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "Crystallized",
+        FileName = "Config_v3"
+    },
+    Discord = { Enabled = false },
+    KeySystem = false
+})
+
+Rayfield:Notify({
+    Title = "Crystallized v3 Loaded",
+    Content = "Gold Farm, Auras, AutoChest, Pinch, Quick Hut, Coin Presser, ESP+",
+    Duration = 8
+})
+
+-- 3) Services
+local RunService        = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players           = game:GetService("Players")
+local Workspace         = game:GetService("Workspace")
+local TweenService      = game:GetService("TweenService")
+local Stats             = game:GetService("Stats")
+local TeleportService   = game:GetService("TeleportService")
+local VirtualUser       = game:GetService("VirtualUser")
+local Lighting          = game:GetService("Lighting")
+local UserInputService  = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
+local Teams             = game:GetService("Teams")
+local HttpService       = game:GetService("HttpService")
+
+local plr  = Players.LocalPlayer
+local char, root, hum, humanoid
+
+local function bindCharacter(c)
+    char = c
+    root = c:WaitForChild("HumanoidRootPart", 10)
+    hum  = c:FindFirstChildOfClass("Humanoid") or c:WaitForChild("Humanoid", 10)
+    humanoid = hum
+end
+if plr.Character then bindCharacter(plr.Character) end
+plr.CharacterAdded:Connect(bindCharacter)
+
+local function getHRP()
+    local c = plr.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function getHum()
+    local c = plr.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+-- =========================================================
+--  Shared state
+-- =========================================================
+S = {
+    -- Heal
+    AutoHealEnabled=false, SmartHealEnabled=false, AutoHealType="AutoHeal",
+    HealFruit="Bloodfruit", HealCPS=120, HealThreshold=70,
+    AutoEatEnabled=false, EatFruit="Bloodfruit", EatThreshold=70,
+    WasteFruitsEnabled=false, WasteFruit="Bloodfruit", FruitsCap=100,
+    -- Combat
+    AutoHitStartEnabled=false, AutoHitSelection="SwingHit", AutoHitCooldown=0.05,
+    PlayerReachEnabled=false, PlayerReachRange=8, PlayerTargetCount=3,
+    PlayerSwingPacked=true, FaceEnemyEnabled=false,
+    AutoTraceEnabled=false, AutoTraceHealth=10, TraceRange=8,
+    -- Silent Aim
+    SilentAimbot=false, SilentAimTargetPart="HumanoidRootPart",
+    SilentAimLeadMult=1.0, AutoShoot=false, AutoShootCritter=false,
+    ShowFOVCircle=false, HitboxFOVSize=120,
+    HitboxEnabled=false, HitboxBowOnly=false, HitboxSize=7, HitboxVisuals=false,
+    -- AutoChest
+    AutoChestEnabled=false, AutoChestFallThreshold=0.6, AutoChestPredictionTime=0.2,
+    AutoChestJumpPrediction=false, AutoChestForwardOffset=0,
+    AutoChestSelectedChest="Chest",
+    -- Pinch
+    PinchEnabled=false, PinchItemName="Crystal Gate",
+    PinchXOffset=1.60, PinchZOffset=0, PinchShiftX=0, PinchShiftZ=-11.70,
+    PinchYOffset=-3.5, PinchPredictTime=1.0, PinchTargetMode="Auto Target Mode",
+    -- Gold Farm
+    GoldCircuitEnabled=false, GoldSpeed=21, GoldDelay=0.25, GoldVisual=false,
+    GoldNoclip=false, GoldAutoEquip=false, GoldHoeType="Wood Hoe",
+    TweenOnly=true, WaterTweenEnabled=false,
+    RecordedPositions={}, RecordingPath=false, RecordInterval=1.0,
+    -- Auras
+    ResourceAuraEnabled=false, StructureAuraEnabled=false, CritterAuraEnabled=false,
+    ResourceType="AllResource", StructureType="AllStructure", CritterType="All",
+    ResourceRange=15, CritterRange=15, TargetCount=3,
+    ResourceCooldown=0.03, CritterCooldown=0.08,
+    AuraLegitSwing=false,
+    GoldNodeAuraEnabled=false, IceAuraEnabled=false,
+    -- Farming
+    PlantEnabled=false, PlantRange=20, PlantDelay=0.05,
+    PlantFruit={Bloodfruit=true},
+    HarvestEnabled=false, HarvestRange=30,
+    TweenToPlantBox=false, TweenToBush=false, TweenToBushAndBox=false,
+    CacheWalk=false, CachePlantBoxes=false, CacheAmount=20, CacheTimer=3,
+    PlantingTweenMode="SmoothWalk", PlantingTweenSpeed=19, TweenRange=500,
+    -- Placement
+    MultiplyPlantBox=false, SoloPatternPlantBoxes=false,
+    PlantBoxRotation=0, PlantBoxSpacingX=5.1, PlantBoxSpacingZ=5.1,
+    ShowPlantBoxPreview=false,
+    -- Pickup / Drop
+    AutoPickupEnabled=false, ChestPickupEnabled=false, CustomPickupFilter="",
+    PickupRange=50, PickupBatchSize=150, PickupDelay=0.01,
+    AutoDropEnabled=false, DropItem="", DropAmount="Infinite",
+    -- Fuel
+    AutoFuelEnabled=false, FuelType="All (Wood/Log/Leaves)", FuelThreshold=200,
+    -- Fish / Saddle
+    AutoFishEnabled=false, FishDistance=50, AutoSaddleEnabled=false,
+    -- Coin Presser
+    CoinPresserEnabled=false, MultiCoinPresserEnabled=false,
+    -- Craft
+    AutoCraftEnabled=false, CraftItemName="", CraftItemID=nil, CraftDelay=0.5,
+    -- Shop
+    BuyItemName="Adurite", BuyAmount=1,
+    -- Behind Queen Ant
+    BehindQueenAnt=false, BehindQueenAntStuds=3,
+    -- Crystal Guardian
+    CrystalGuardianFarm=false, CrystalGuardianSpeed=17,
+    -- Auto Sand
+    AutoSandEnabled=false, SandFarmSpeed=0.4, SandAmount=1, SandHeight=1,
+    SandFarmSpot=nil, SandFarmPhase="dig",
+    -- Rebirth / Respawn
+    AutoRebirthEnabled=false, RebirthLevel=101, AutoRespawnEnabled=false,
+    -- Potion
+    SelectedPotion="Swiftness Potion", AutoCraftPotion=false,
+    PotionCraftDelay=0.5, PotionRange=15,
+    -- Voodoo
+    VoodooKeybind=nil,
+    -- Item Deletion
+    ItemDeletionEnabled=false, ItemDeletion="",
+    -- Movement
+    NoclipEnabled=false, WallClimberEnabled=false, WalkSpeedEnabled=false,
+    WalkSpeed=16, MaxSlopeEnabled=false, WaterTweenEnabled=false,
+    -- Staff
+    StaffDetectionsEnabled=false, LeaveOnStaff=false,
+    -- ESP
+    PlayerESPEnabled=false, HideTeams=false,
+    ESPColors={
+        ["PlayerESP"]=Color3.fromRGB(255,0,255),
+        ["GodESP"]=Color3.fromRGB(255,255,0),
+        ["Wandering Trader ESP"]=Color3.fromRGB(255,200,0),
+        ["Meteor Core ESP"]=Color3.fromRGB(170,85,255),
+        ["God Boss ESP"]=Color3.fromRGB(255,0,0),
+        ["Critter ESP"]=Color3.fromRGB(255,150,50),
+        ["Item ESP"]=Color3.fromRGB(0,255,140),
+        ["Tribe Totem ESP"]=Color3.fromRGB(255,255,255),
+    },
+    OreESPEnabled=false, SelectedOres={},
+    ItemESPEnabled=false, ItemESPQuery="",
+    CritterESPEnabled=false, SelectedCritters={},
+    GodBossESPEnabled=false, SelectedGodBosses={},
+    MeteorCoreESPEnabled=false, WanderingTraderESPEnabled=false,
+    TribeTotemESPEnabled=false,
+}
+
+-- =========================================================
+--  PACKET IDS (auto-sync from Modules.Packets)
+-- =========================================================
+PACKET_IDS = {}
+ByteNetReliable = nil
+task.spawn(function()
+    ByteNetReliable = ReplicatedStorage:WaitForChild("ByteNetReliable", 30)
+end)
+
+local function readPacketObjectId(packetObj)
+    if type(packetObj) ~= "table" then return nil end
+    for _, key in ipairs({ "id","Id","_id","packetId","packetID","ID" }) do
+        local v = packetObj[key]
+        if type(v) == "number" and v == v and v > 0 then return v end
+    end
+    return nil
+end
+
+local function syncPacketIDs()
+    local mf = ReplicatedStorage:FindFirstChild("Modules")
+    if not mf then return false end
+    local pi = mf:FindFirstChild("Packets")
+    if not pi then return false end
+    local ok, pk = pcall(require, pi)
+    if not ok or type(pk) ~= "table" then return false end
+    local applied = 0
+    for name, obj in pairs(pk) do
+        local id = readPacketObjectId(obj)
+        if id and PACKET_IDS[name] ~= id then
+            PACKET_IDS[name] = id
+            applied += 1
+        end
+    end
+    return applied > 0
+end
+function getPacketId(name) return PACKET_IDS[name] end
+
+task.spawn(function()
+    for _ = 1, 20 do
+        if syncPacketIDs() then break end
+        task.wait(0.5)
+    end
+    while true do
+        task.wait(30)
+        pcall(syncPacketIDs)
+    end
+end)
+
+-- =========================================================
+--  Item ID helpers
+-- =========================================================
+craftNameToID = {}
+craftItemIDs = {}
+do
+    task.spawn(function()
+        local mf = ReplicatedStorage:WaitForChild("Modules", 20)
+        if not mf then return end
+        local ii = mf:WaitForChild("ItemIDS", 20)
+        if not ii then return end
+        local ok, mod = pcall(require, ii)
+        if not ok or type(mod) ~= "table" then return end
+        local isNameToID = false
+        for k, v in pairs(mod) do
+            if type(k) == "string" and type(v) == "number" then isNameToID = true break end
+        end
+        if isNameToID then
+            for n, id in pairs(mod) do craftNameToID[n] = id craftItemIDs[id] = n end
+        else
+            for id, n in pairs(mod) do craftItemIDs[id] = n craftNameToID[n] = id end
+        end
+    end)
+end
+
+function autoDiscoverItemID(itemName)
+    if not itemName or itemName == "" then return nil end
+    local cached = craftNameToID[itemName]
+    if cached ~= nil then return cached end
+    return nil
+end
+
+-- =========================================================
+--  Remote helpers
+-- =========================================================
+local function writeCFrame18(b, offset, cf)
+    local pos = cf.Position
+    local _, _, _, R00, R01, R02, R10, R11, R12, R20, R21, R22 = cf:GetComponents()
+    local qx, qy, qz, qw
+    local tr = R00 + R11 + R22
+    if tr > 0 then
+        local Sq = math.sqrt(tr + 1.0) * 2
+        qw = 0.25 * Sq; qx = (R21 - R12) / Sq; qy = (R02 - R20) / Sq; qz = (R10 - R01) / Sq
+    elseif (R00 > R11) and (R00 > R22) then
+        local Sq = math.sqrt(1.0 + R00 - R11 - R22) * 2
+        qw = (R21 - R12) / Sq; qx = 0.25 * Sq; qy = (R01 + R10) / Sq; qz = (R02 + R20) / Sq
+    elseif R11 > R22 then
+        local Sq = math.sqrt(1.0 + R11 - R00 - R22) * 2
+        qw = (R02 - R20) / Sq; qx = (R01 + R10) / Sq; qy = 0.25 * Sq; qz = (R12 + R21) / Sq
+    else
+        local Sq = math.sqrt(1.0 + R22 - R00 - R11) * 2
+        qw = (R10 - R01) / Sq; qx = (R02 + R20) / Sq; qy = (R12 + R21) / Sq; qz = 0.25 * Sq
+    end
+    local len = math.sqrt(qx*qx + qy*qy + qz*qz + qw*qw)
+    qx, qy, qz, qw = qx/len, qy/len, qz/len, qw/len
+    if qw < 0 then qx, qy, qz, qw = -qx, -qy, -qz, -qw end
+    buffer.writef32(b, offset, pos.X)
+    buffer.writef32(b, offset + 4, pos.Y)
+    buffer.writef32(b, offset + 8, pos.Z)
+    buffer.writei16(b, offset + 12, math.clamp(qx * 32767, -32768, 32767))
+    buffer.writei16(b, offset + 14, math.clamp(qy * 32767, -32768, 32767))
+    buffer.writei16(b, offset + 16, math.clamp(qz * 32767, -32768, 32767))
+end
+
+local function fireSwingTool(entries, hrp, opts)
+    opts = opts or {}
+    if not ByteNetReliable or not hrp or not entries or #entries == 0 then return end
+    local swingId = getPacketId("SwingTool")
+    if not swingId then return end
+
+    local maxPerPacket = math.clamp(opts.maxPerPacket or 32, 1, 64)
+    local timeStep = opts.timeStep or 0.01
+    local baseTime = opts.baseTime or (time() - timeStep)
+    local pktIdx = 0
+
+    for startIdx = 1, #entries, maxPerPacket do
+        if pktIdx > 0 then RunService.Heartbeat:Wait() end
+        pktIdx += 1
+
+        local batch = {}
+        for i = startIdx, math.min(startIdx + maxPerPacket - 1, #entries) do
+            table.insert(batch, entries[i])
+        end
+        local n = #batch
+        local fromPos = opts.fromPos or hrp.Position
+        local cf = opts.cframe
+        if not cf then
+            if n == 1 and typeof(batch[1].pos) == "Vector3" then
+                cf = CFrame.lookAt(fromPos, batch[1].pos)
+            else
+                local sum, cnt = Vector3.zero, 0
+                for _, t in ipairs(batch) do
+                    if typeof(t.pos) == "Vector3" then sum += t.pos; cnt += 1 end
+                end
+                cf = (cnt > 0) and CFrame.lookAt(fromPos, sum / cnt) or hrp.CFrame
+            end
+        end
+
+        local b = buffer.create(30 + 5 * n)
+        buffer.writeu8(b, 0, 0)
+        buffer.writeu8(b, 1, swingId)
+        writeCFrame18(b, 2, cf)
+        buffer.writeu16(b, 20, n)
+        local o = 22
+        for _, t in ipairs(batch) do
+            buffer.writeu8(b, o, 0)
+            buffer.writeu32(b, o + 1, math.floor(tonumber(t.eid) or 0))
+            o += 5
+        end
+        buffer.writef64(b, o, baseTime + (pktIdx * timeStep))
+        ByteNetReliable:FireServer(b)
+    end
+end
+
+local function fireClientSwing()
+    if not ByteNetReliable then return end
+    local id = getPacketId("ClientSwing")
+    if not id then return end
+    local b = buffer.create(2)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    ByteNetReliable:FireServer(b)
+end
+
+local function firePickup(eid)
+    if not ByteNetReliable then return end
+    local id = getPacketId("Pickup")
+    local n = math.floor(tonumber(eid) or 0)
+    if not id or n <= 0 then return end
+    local b = buffer.create(6)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu32(b, 2, n)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireUseBagItem(slotID, itemID)
+    if not ByteNetReliable then return end
+    local id = getPacketId("UseBagItem")
+    if not id then return end
+    local b = buffer.create(8)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu32(b, 2, slotID)
+    buffer.writeu16(b, 6, itemID)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireDropBagItem(slotID)
+    if not ByteNetReliable then return end
+    local id = getPacketId("DropBagItem")
+    if not id then return end
+    local b = buffer.create(4)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu16(b, 2, slotID)
+    ByteNetReliable:FireServer(b)
+end
+
+local function firePlaceStructure(name, cf)
+    if not ByteNetReliable then return end
+    local id = getPacketId("PlaceStructure")
+    if not id then return end
+    local len = #name
+    local b = buffer.create(4 + len + 18)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu16(b, 2, len)
+    for i = 1, len do buffer.writeu8(b, 3 + i, string.byte(name, i)) end
+    writeCFrame18(b, 4 + len, cf)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireInteractStructure(eid, itemID)
+    if not ByteNetReliable then return end
+    local id = getPacketId("InteractStructure")
+    if not id then return end
+    local b = buffer.create(8)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu32(b, 2, eid)
+    buffer.writeu16(b, 6, itemID)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireEquipTool(slot)
+    if not ByteNetReliable then return end
+    local id = getPacketId("EquipTool")
+    if not id then return end
+    local b = buffer.create(4)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu16(b, 2, slot)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireUseBagItemSlotByName(itemName)
+    local mainGui = plr.PlayerGui:FindFirstChild("MainGui")
+    local list = mainGui and mainGui.RightPanel and mainGui.RightPanel.Inventory and mainGui.RightPanel.Inventory.List
+    if not list then return end
+    for _, item in ipairs(list:GetChildren()) do
+        if item:IsA("GuiObject") and item.Name == itemName then
+            local itemID = autoDiscoverItemID(itemName) or item:GetAttribute("ItemID") or item:GetAttribute("ID")
+            if itemID then fireUseBagItem(item.LayoutOrder, itemID) end
+            return
+        end
+    end
+end
+
+local function fireTargetTool(eid)
+    if not ByteNetReliable then return end
+    local id = getPacketId("TargetTool")
+    if not id then return end
+    local b = buffer.create(7)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu8(b, 2, 1)
+    buffer.writeu32(b, 3, eid)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireVoodoo(targetPos, originPos)
+    if not ByteNetReliable then return end
+    local vId = getPacketId("VoodooSpell")
+    if not vId then return end
+    local hitPos = targetPos
+    local fromPos = originPos
+    local flatDir = Vector3.new(hitPos.X - fromPos.X, 0, hitPos.Z - fromPos.Z)
+    if flatDir.Magnitude > 0.001 then flatDir = flatDir.Unit else flatDir = Vector3.new(0, 0, -1) end
+    local b = buffer.create(26)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, vId)
+    buffer.writef32(b, 2, flatDir.X)
+    buffer.writef32(b, 6, 0)
+    buffer.writef32(b, 10, flatDir.Z)
+    buffer.writef32(b, 14, hitPos.X)
+    buffer.writef32(b, 18, hitPos.Y)
+    buffer.writef32(b, 22, hitPos.Z)
+    ByteNetReliable:FireServer(b)
+end
+
+local function fireRebirth()
+    if not ByteNetReliable then return end
+    local id = getPacketId("Rebirth")
+    if not id then return end
+    local b = buffer.create(2)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    ByteNetReliable:FireServer(b)
+end
+
+local function firePurchaseItem(itemID, amount)
+    if not ByteNetReliable then return end
+    local id = getPacketId("PurchaseFromShop")
+    if not id then return end
+    local b = buffer.create(8)
+    buffer.writeu8(b, 0, 0)
+    buffer.writeu8(b, 1, id)
+    buffer.writeu32(b, 2, itemID)
+    buffer.writeu16(b, 6, amount or 1)
+    ByteNetReliable:FireServer(b)
+end
+
+-- =========================================================
+--  Entity ID helpers
+-- =========================================================
+local function readEntityId(inst)
+    if not inst then return nil end
+    for _, key in ipairs({ "EntityID","NetworkId","networkId","NetworkID","ID","Id","Eid","EntityId" }) do
+        local v = inst:GetAttribute(key)
+        if v ~= nil then
+            local n = math.floor(tonumber(v) or 0)
+            if n > 0 then return n end
+        end
+    end
+    for _, val in pairs(inst:GetAttributes()) do
+        if typeof(val) == "number" and val > 1000 then return math.floor(val) end
+    end
+    local v = inst:FindFirstChildWhichIsA("IntValue", true) or inst:FindFirstChildWhichIsA("NumberValue", true)
+    if v and v.Value > 1000 then return math.floor(v.Value) end
+    return nil
+end
+
+local function getBoogaChar(player)
+    if not player then return nil end
+    local pf = workspace:FindFirstChild("Players")
+    if pf then
+        local custom = pf:FindFirstChild(player.Name)
+        if custom then return custom end
+    end
+    return player.Character
+end
+
+local function getBoogaHRP(player)
+    local c = getBoogaChar(player)
+    if not c then return nil end
+    return c:FindFirstChild("HumanoidRootPart")
+        or c:FindFirstChild("Hitbox")
+        or c:FindFirstChildWhichIsA("BasePart")
+end
+
+local function isAlly(player)
+    if not player or player == plr then return false end
+    local myTeam = plr.Team
+    local theirTeam = player.Team
+    if not myTeam or not theirTeam then return false end
+    if theirTeam.Name == "NoTribe" then return false end
+    if myTeam.Name == "NoTribe" then return false end
+    return myTeam == theirTeam
+end
+
+local function isTargetablePlayer(p)
+    if not p or p == plr then return false end
+    if not p.Character then return false end
+    if isAlly(p) then return false end
+    return true
+end
+
+-- =========================================================
+--  Tool helpers
+-- =========================================================
+local function getToolSlot(toolName)
+    local GameUtil
+    pcall(function() GameUtil = require(ReplicatedStorage.Modules.GameUtil) end)
+    if not GameUtil then return nil end
+    local tb = GameUtil.Data.toolbar
+    if not tb then return nil end
+    for i = 1, 6 do
+        if tb[i] and tb[i].name == toolName then return i end
+    end
+    return nil
+end
+
+local function equipItem(name)
+    local slot = getToolSlot(name)
+    if slot then
+        fireEquipTool(slot)
+    else
+        local c = plr.Character
+        if c then
+            local t = plr.Backpack:FindFirstChild(name)
+            if t then c:FindFirstChildOfClass("Humanoid"):EquipTool(t) end
+        end
+    end
+end
+
+local function isToolEquipped(name)
+    local pf = workspace:FindFirstChild("Players")
+    if pf then
+        local folder = pf:FindFirstChild(plr.Name)
+        local tf = folder and folder:FindFirstChild("Tools")
+        if tf and tf:FindFirstChild(name) then return true end
+    end
+    local c = plr.Character
+    if c and c:FindFirstChild(name) then return true end
+    return false
+end
+
+-- =========================================================
+--  Movement helpers
+-- =========================================================
+local alignPosition, alignAttachment0, alignAttachment1
+local isTweening = false
+local WALK_SPEED = 21
+local restoreCollision
+
+local function captureCollision()
+    if not plr.Character then return end
+    plr.Character:SetAttribute("Crystallized_OriginalCollide", 1)
+end
+
+restoreCollision = function()
+    if plr.Character then
+        local h = plr.Character:FindFirstChildOfClass("Humanoid")
+        for _, p in pairs(plr.Character:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = true end
+        end
+        if h then
+            h:ChangeState(Enum.HumanoidStateType.Running)
+            h.PlatformStand = false
+            h.Sit = false
+            h.AutoRotate = true
+        end
+    end
+end
+
+local function noclipChar()
+    if not plr.Character then return end
+    for _, p in pairs(plr.Character:GetDescendants()) do
+        if p:IsA("BasePart") then
+            if isTweening then
+                p.CanCollide = false
+            else
+                if not (p.Name:find("Leg") or p.Name:find("Foot")) then
+                    p.CanCollide = false
+                end
+            end
+        end
+    end
+end
+
+local function createAlignPosition(hrp)
+    if alignPosition then alignPosition:Destroy() end
+    if alignAttachment0 then alignAttachment0:Destroy() end
+    if alignAttachment1 then alignAttachment1:Destroy() end
+    alignAttachment0 = Instance.new("Attachment", hrp)
+    alignAttachment1 = Instance.new("Attachment", workspace.Terrain)
+    alignPosition = Instance.new("AlignPosition")
+    alignPosition.Attachment0 = alignAttachment0
+    alignPosition.Attachment1 = alignAttachment1
+    alignPosition.MaxForce = 400000
+    alignPosition.MaxVelocity = 100
+    alignPosition.Responsiveness = 200
+    alignPosition.ApplyAtCenterOfMass = true
+    alignPosition.Parent = hrp
+end
+
+local function tweenToWaypoint(hrp, h, target, speed)
+    if not alignPosition then createAlignPosition(hrp) end
+    alignAttachment1.WorldPosition = target
+    alignPosition.MaxVelocity = speed
+    isTweening = true
+end
+
+local function walkToWaypoint(hrp, h, target, speed)
+    local bv = hrp:FindFirstChild("CrystallizedBodyVelocity")
+    local bg = hrp:FindFirstChild("CrystallizedBodyGyro")
+    if not bv then
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "CrystallizedBodyVelocity"
+        bv.Parent = hrp
+    end
+    if not bg then
+        bg = Instance.new("BodyGyro")
+        bg.Name = "CrystallizedBodyGyro"
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.P = 9000
+        bg.Parent = hrp
+    end
+    local dir = target - hrp.Position
+    local flat = Vector3.new(dir.X, 0, dir.Z)
+    if flat.Magnitude > 0 then
+        flat = flat.Unit
+        bv.MaxForce = Vector3.new(math.huge, 0, math.huge)
+        bv.Velocity = flat * speed
+        bg.CFrame = CFrame.new(hrp.Position, hrp.Position + flat)
+    end
+    if tick() % 0.5 < 0.05 then h:MoveTo(target) end
+end
+
+-- =========================================================
+--  AutoHeal (SmartHeal duty cycle)
+-- =========================================================
+local healFruitId = nil
+local healHealthConn
+local healLastTrackedHealth = nil
+local healLastDamageTime = 0
+local healDamageBurstHits = 0
+local healAdaptiveDelay = 0
+local healNoGainStreak = 0
+local healRecentHitTimes = {}
+local healRunning = false
+local healActive = false
+local smoothFps, smoothPingMs, lastPingSample = 60, 80, 0
+
+local SMART_TRIGGER = 65
+local SMART_RECOVER = 98
+local SMART_ACTIVE = 7
+local SMART_PAUSE = 0.30
+local smartBursting, smartCycleStart = false, 0
+
+local function getHealFruitId(name)
+    local id = autoDiscoverItemID(name)
+    if id then return id end
+    local mainGui = plr.PlayerGui:FindFirstChild("MainGui")
+    local list = mainGui and mainGui.RightPanel and mainGui.RightPanel.Inventory and mainGui.RightPanel.Inventory.List
+    if list then
+        local item = list:FindFirstChild(name)
+        if item then return item:GetAttribute("ItemID") or item:GetAttribute("ID") end
+    end
+    return nil
+end
+
+local function getHealSlot(name)
+    local mainGui = plr.PlayerGui:FindFirstChild("MainGui")
+    local list = mainGui and mainGui.RightPanel and mainGui.RightPanel.Inventory and mainGui.RightPanel.Inventory.List
+    if not list then return nil end
+    local item = list:FindFirstChild(name)
+    return item and item.LayoutOrder
+end
+
+local function getPingFpsScale(hpPct)
+    local fps, ping = smoothFps, smoothPingMs
+    local critical = (hpPct or 100) <= 45
+    local fpsScale
+    if fps < 8 then fpsScale = critical and 0.55 or 0.4
+    elseif fps < 15 then fpsScale = critical and 0.7 or 0.6
+    elseif fps < 25 then fpsScale = 0.8
+    elseif fps < 40 then fpsScale = 0.92
+    else fpsScale = 1 end
+    local pingScale
+    if ping <= 90 then pingScale = 1
+    elseif ping <= 140 then pingScale = 0.9
+    elseif ping <= 200 then pingScale = 0.8
+    elseif ping <= 300 then pingScale = 0.7
+    else pingScale = critical and 0.5 or 0.4 end
+    return math.clamp(math.min(fpsScale, pingScale), critical and 0.45 or 0.32, 1)
+end
+
+local function getEffectiveCPS()
+    local h = getHum()
+    local hpPct = 100
+    if h and h.MaxHealth > 0 then hpPct = (h.Health / h.MaxHealth) * 100 end
+    local base
+    if S.SmartHealEnabled then
+        base = math.max(140, math.clamp(tonumber(S.HealCPS) or 120, 1, 500))
+    else
+        base = math.clamp(tonumber(S.HealCPS) or 120, 1, 500)
+    end
+    local scale = getPingFpsScale(hpPct)
+    local cps = base * scale
+    local floor = hpPct <= 30 and 30 or (hpPct <= 45 and 22 or 14)
+    return math.clamp(cps, floor, base)
+end
+
+local function pruneHealHits(now)
+    for i = #healRecentHitTimes, 1, -1 do
+        if now - healRecentHitTimes[i] > (S.HealDoubleHitWindow or 0.65) then
+            table.remove(healRecentHitTimes, i)
+        end
+    end
+    healDamageBurstHits = #healRecentHitTimes
+end
+
+local function bindSmartHealHealthWatch(c)
+    if healHealthConn then healHealthConn:Disconnect() healHealthConn = nil end
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    if not h then return end
+    healLastTrackedHealth = h.Health
+    healHealthConn = h.HealthChanged:Connect(function(newHp)
+        if not S.SmartHealEnabled then healLastTrackedHealth = newHp return end
+        if healLastTrackedHealth and newHp < healLastTrackedHealth - 0.01 then
+            local now = os.clock()
+            table.insert(healRecentHitTimes, now)
+            pruneHealHits(now)
+            healLastDamageTime = now
+            healAdaptiveDelay = math.max(0, healAdaptiveDelay * 0.45)
+            healNoGainStreak = 0
+        end
+        healLastTrackedHealth = newHp
+    end)
+end
+plr.CharacterAdded:Connect(function(c)
+    if S.SmartHealEnabled then bindSmartHealHealthWatch(c) end
+end)
+
+local function executeHeal()
+    local h = getHum()
+    if not h or h.Health <= 0 then return end
+    local hpPct = (h.Health / h.MaxHealth) * 100
+    local allow = (S.SmartHealEnabled and smartBursting) or (hpPct <= (S.HealThreshold or 70))
+    if not allow then return end
+
+    local fName = S.HealFruit
+    local fID = getHealFruitId(fName)
+    local slotID = getHealSlot(fName)
+    if fID and slotID then fireUseBagItem(slotID, fID) end
+end
+
+local function runSmartHealTick()
+    local now = os.clock()
+    pruneHealHits(now)
+    local h = getHum()
+    if not h or h.Health <= 0 then return 0.15 end
+    local hpPct = (h.Health / h.MaxHealth) * 100
+
+    if S.SmartHealEnabled then
+        if not smartBursting then
+            if hpPct <= SMART_TRIGGER then
+                smartBursting = true
+                smartCycleStart = now
+            else
+                return 0.08
+            end
+        elseif hpPct >= SMART_RECOVER then
+            smartBursting = false
+            smartCycleStart = 0
+            return 0.08
+        end
+        local period = SMART_ACTIVE + SMART_PAUSE
+        local elapsed = (now - smartCycleStart) % period
+        if elapsed >= SMART_ACTIVE then
+            return math.clamp(period - elapsed, 0.05, 0.25)
+        end
+    end
+    executeHeal()
+    local cps = getEffectiveCPS()
+    return math.max(1 / cps, 0.008)
+end
+
+local function startAutoHealLoop()
+    task.spawn(function()
+        if S.SmartHealEnabled then bindSmartHealHealthWatch(plr.Character) end
+        while S.AutoHealEnabled do
+            local waitTime = runSmartHealTick()
+            task.wait(waitTime)
+        end
+    end)
+end
+
+-- ping/fps sampler
+task.spawn(function()
+    RunService.Heartbeat:Connect(function(dt)
+        if not S.AutoHealEnabled then return end
+        if typeof(dt) == "number" and dt > 0 and dt < 2 then
+            local instFps = 1 / math.max(dt, 0.001)
+            local alpha = (dt >= 0.1) and 0.45 or 0.15
+            smoothFps = smoothFps * (1 - alpha) + instFps * alpha
+        end
+        local now = os.clock()
+        if now - lastPingSample >= 0.25 then
+            lastPingSample = now
+            local ms
+            pcall(function()
+                local n = Stats:FindFirstChild("Network")
+                local ss = n and n:FindFirstChild("ServerStatsItem")
+                local dp = ss and ss:FindFirstChild("DataPing")
+                if dp and dp.GetValue then ms = tonumber(dp:GetValue()) end
+            end)
+            if not ms then pcall(function() ms = plr:GetNetworkPing() * 1000 end) end
+            smoothPingMs = smoothPingMs * 0.65 + math.clamp(tonumber(ms) or 80, 1, 2000) * 0.35
+        end
+    end)
+end)
+
+-- =========================================================
+--  Auto Hit / Reach / Silent Aim
+-- =========================================================
+local autoHitLoopActive = false
+local manualAttackLock = false
+local reachOriginals = {}
+local reachExcluded = { "bow","potion","sling","saddle","fishing rod","horn","shovel" }
+
+local function isReachExcluded(tool)
+    local n = string.lower(tool.Name or "")
+    for _, kw in ipairs(reachExcluded) do
+        if string.find(n, kw, 1, true) then return true end
+    end
+    return false
+end
+
+local function findReachHandle(tool)
+    if not tool or not tool.Parent then return nil end
+    if tool:IsA("Tool") then
+        local h = tool:FindFirstChild("Handle")
+        if h and h:IsA("BasePart") then return h end
+    end
+    local h = tool:FindFirstChild("Handle", true)
+    if h and h:IsA("BasePart") then return h end
+    return nil
+end
+
+local function getEquippedTools()
+    local out, seen = {}, {}
+    local pf = workspace:FindFirstChild("Players")
+    if pf then
+        local folder = pf:FindFirstChild(plr.Name)
+        local tf = folder and folder:FindFirstChild("Tools")
+        if tf then
+            for _, t in ipairs(tf:GetChildren()) do
+                if not seen[t] then seen[t] = true table.insert(out, t) end
+            end
+        end
+    end
+    local c = plr.Character
+    if c then
+        for _, t in ipairs(c:GetChildren()) do
+            if t:IsA("Tool") and not seen[t] then seen[t] = true table.insert(out, t) end
+        end
+    end
+    return out
+end
+
+local function restoreReach()
+    for part, orig in pairs(reachOriginals) do
+        if part and part.Parent then
+            pcall(function()
+                part.Size = orig.Size
+                part.Massless = orig.Massless
+                if orig.CanCollide ~= nil then part.CanCollide = orig.CanCollide end
+            end)
+        end
+    end
+    reachOriginals = {}
+end
+
+local function applyPlayerReach()
+    if not S.PlayerReachEnabled then restoreReach() return end
+    local range = math.clamp(tonumber(S.PlayerReachRange) or 8, 1, 8)
+    local active = {}
+    for _, tool in ipairs(getEquippedTools()) do
+        if not isReachExcluded(tool) then
+            local h = findReachHandle(tool)
+            if h and h.Parent then
+                active[h] = true
+                if not reachOriginals[h] then
+                    reachOriginals[h] = { Size = h.Size, Massless = h.Massless, CanCollide = h.CanCollide }
+                end
+                pcall(function()
+                    h.Massless = true
+                    h.CanCollide = false
+                    h.Size = Vector3.new(0.5, 0.5, range)
+                end)
+            end
+        end
+    end
+    for part in pairs(reachOriginals) do
+        if not active[part] then
+            if part and part.Parent then
+                local orig = reachOriginals[part]
+                pcall(function()
+                    part.Size = orig.Size
+                    part.Massless = orig.Massless
+                    part.CanCollide = orig.CanCollide
+                end)
+            end
+            reachOriginals[part] = nil
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if S.PlayerReachEnabled then pcall(applyPlayerReach) end
+    end
+end)
+
+local function getMeleeEquipped()
+    local pf = workspace:FindFirstChild("Players")
+    local folder = pf and pf:FindFirstChild(plr.Name)
+    local tf = folder and folder:FindFirstChild("Tools")
+    if not tf then return false end
+    return #tf:GetChildren() > 0
+end
+
+local function getAutoHitTargets(range, maxPick)
+    local r = getHRP()
+    if not r then return {} end
+    local detectionRange = range + 10
+    local rangeSq = range * range
+    local detectionSq = detectionRange * detectionRange
+    local out = {}
+    for _, other in ipairs(Players:GetPlayers()) do
+        if isTargetablePlayer(other) then
+            local c = other.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            local eid = c and readEntityId(c)
+            if hrp and eid then
+                local diff = hrp.Position - r.Position
+                local flat = Vector3.new(diff.X, 0, diff.Z)
+                local fs = flat:Dot(flat)
+                if fs <= rangeSq and fs <= detectionSq and math.abs(diff.Y) <= 20 then
+                    table.insert(out, { eid = eid, distSq = fs, pos = hrp.Position })
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.distSq < b.distSq end)
+    local trimmed = {}
+    for i = 1, math.min(#out, maxPick) do table.insert(trimmed, out[i]) end
+    return trimmed
+end
+
+local function queueTargets(entries, useSwing)
+    if #entries == 0 or not ByteNetReliable then return end
+    local r = getHRP()
+    if not r then return end
+    local maxPick = math.clamp(tonumber(S.PlayerTargetCount) or 1, 1, 9)
+    if S.PlayerSwingPacked then
+        fireSwingTool(entries, r, { maxPerPacket = maxPick })
+    else
+        for _, e in ipairs(entries) do fireSwingTool({ e }, r, { maxPerPacket = 1 }) end
+    end
+    if useSwing then fireClientSwing() end
+end
+
+local function startAutoHitLoop()
+    if autoHitLoopActive then return end
+    autoHitLoopActive = true
+    task.spawn(function()
+        while S.AutoHitStartEnabled do
+            pcall(function()
+                local range = S.PlayerReachRange or 8
+                local maxPick = math.clamp(tonumber(S.PlayerTargetCount) or 1, 1, 9)
+                local targets = getAutoHitTargets(range, maxPick)
+                if #targets > 0 then
+                    if S.AutoHitSelection == "SwingHit" then
+                        if getMeleeEquipped() and not manualAttackLock then queueTargets(targets, true) end
+                    else
+                        queueTargets(targets, false)
+                    end
+                end
+            end)
+            task.wait(S.AutoHitCooldown or 0.05)
+        end
+        autoHitLoopActive = false
+    end)
+end
+
+-- =========================================================
+--  Resource / Structure / Critter Aura (SwingTool based)
+-- =========================================================
+local auraActive = false
+local auraState = {
+    resCache = {}, resScanAt = 0,
+    struCache = {}, struScanAt = 0,
+    critCache = {}, critConn, critRemConn, critFolder, critScanAt = 0,
+}
+
+local function rescanResources(hrpPos, scanRange)
+    table.clear(auraState.resCache)
+    local res = workspace:FindFirstChild("Resources")
+    if not res then return end
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = { res }
+    local parts = workspace:GetPartBoundsInRadius(hrpPos, scanRange, params)
+    local seen = {}
+    for i = 1, math.min(#parts, 300) do
+        local part = parts[i]
+        if part and part.Parent then
+            local m = part.Parent
+            if not m:IsA("Model") then m = part:FindFirstAncestorOfClass("Model") end
+            if m and not seen[m] then
+                local eid = readEntityId(m)
+                local pp = m.PrimaryPart or part
+                if eid and pp then
+                    seen[m] = true
+                    table.insert(auraState.resCache, { model = m, part = pp, eid = eid })
+                end
+            end
+        end
+    end
+end
+
+local function rescanStructures(hrpPos, scanRange)
+    table.clear(auraState.struCache)
+    local dep = workspace:FindFirstChild("Deployables")
+    if not dep then return end
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = { dep }
+    local parts = workspace:GetPartBoundsInRadius(hrpPos, scanRange, params)
+    local seen = {}
+    for i = 1, math.min(#parts, 250) do
+        local part = parts[i]
+        if part and part.Parent then
+            local m = part:FindFirstAncestorOfClass("Model") or part
+            if m and not seen[m] then
+                local eid = readEntityId(m)
+                local pp = m.PrimaryPart or part
+                if eid and pp then
+                    seen[m] = true
+                    table.insert(auraState.struCache, { model = m, part = pp, eid = eid })
+                end
+            end
+        end
+    end
+end
+
+local function matchesFilter(modelName, filter, allToken)
+    if not modelName then return false end
+    filter = tostring(filter or allToken or "")
+    local f = string.lower(filter:gsub("^%s+", ""):gsub("%s+$", ""))
+    if f == "" or f == "all" or f == string.lower(allToken or "") then return true end
+    if string.sub(f, 1, 3) == "all" then return true end
+    return string.find(string.lower(modelName), f, 1, true) ~= nil
+end
+
+local function collectResourceTargets(hrp, rangeSq, now)
+    local res = workspace:FindFirstChild("Resources")
+    if not res then return {} end
+    local scanRange = math.sqrt(rangeSq) + 25
+    if now - auraState.resScanAt > 1.25 then
+        auraState.resScanAt = now
+        rescanResources(hrp.Position, scanRange)
+    end
+    local filter = S.ResourceType or "AllResource"
+    local out = {}
+    for _, d in ipairs(auraState.resCache) do
+        if d.model and d.model.Parent and d.part and d.part.Parent then
+            local distSq = (d.part.Position - hrp.Position).Magnitude ^ 2
+            if distSq <= rangeSq and matchesFilter(d.model.Name, filter, "AllResource") then
+                table.insert(out, { eid = d.eid, distSq = distSq, pos = d.part.Position })
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.distSq < b.distSq end)
+    return out
+end
+
+local function collectStructureTargets(hrp, rangeSq, now)
+    if now - auraState.struScanAt > 1.25 then
+        auraState.struScanAt = now
+        rescanStructures(hrp.Position, math.sqrt(rangeSq) + 25)
+    end
+    local filter = S.StructureType or "AllStructure"
+    local out = {}
+    for _, d in ipairs(auraState.struCache) do
+        if d.model and d.model.Parent and d.part and d.part.Parent then
+            local distSq = (d.part.Position - hrp.Position).Magnitude ^ 2
+            if distSq <= rangeSq and matchesFilter(d.model.Name, filter, "AllStructure") then
+                table.insert(out, { eid = d.eid, distSq = distSq, pos = d.part.Position })
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.distSq < b.distSq end)
+    return out
+end
+
+local function ensureCritterWatch()
+    local folder = workspace:FindFirstChild("Critters")
+    if folder == auraState.critFolder then return end
+    if auraState.critConn then auraState.critConn:Disconnect() end
+    if auraState.critRemConn then auraState.critRemConn:Disconnect() end
+    auraState.critFolder = folder
+    table.clear(auraState.critCache)
+    if folder then
+        for _, m in ipairs(folder:GetDescendants()) do
+            if m:IsA("Model") then table.insert(auraState.critCache, m) end
+        end
+        auraState.critConn = folder.ChildAdded:Connect(function(c)
+            if c:IsA("Model") then table.insert(auraState.critCache, c) end
+        end)
+        auraState.critRemConn = folder.ChildRemoved:Connect(function(c)
+            for i = #auraState.critCache, 1, -1 do
+                if auraState.critCache[i] == c then table.remove(auraState.critCache, i) end
+            end
+        end)
+    end
+end
+
+local function collectCritterTargets(hrp, rangeSq, now)
+    ensureCritterWatch()
+    local range = S.CritterRange or 15
+    local detectionSq = (range + 10) ^ 2
+    local filter = S.CritterType or "All"
+    local out = {}
+    for _, m in ipairs(auraState.critCache) do
+        if m and m.Parent then
+            local eid = readEntityId(m)
+            if eid and matchesFilter(m.Name, filter, "All") then
+                local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                if pp then
+                    local distSq = (pp.Position - hrp.Position).Magnitude ^ 2
+                    if distSq <= detectionSq then
+                        table.insert(out, { eid = eid, distSq = distSq, pos = pp.Position })
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.distSq < b.distSq end)
+    return out
+end
+
+local function pickFrom(list, rangeSq, maxPick)
+    local out = {}
+    for i = 1, math.min(#list, maxPick) do
+        if list[i].distSq <= rangeSq + 100 then
+            table.insert(out, { eid = list[i].eid, pos = list[i].pos })
+        end
+    end
+    return out
+end
+
+local function mergeRows(...)
+    local combined, seen = {}, {}
+    for i = 1, select("#", ...) do
+        for _, r in ipairs(select(i, ...)) do
+            local id = math.floor(tonumber(r.eid) or 0)
+            if id > 0 and not seen[id] then
+                seen[id] = true
+                table.insert(combined, r)
+            end
+        end
+    end
+    return combined
+end
+
+local function startAuraLoop()
+    if auraActive then return end
+    if not (S.ResourceAuraEnabled or S.StructureAuraEnabled or S.CritterAuraEnabled) then return end
+    auraActive = true
+    task.spawn(function()
+        while S.ResourceAuraEnabled or S.StructureAuraEnabled or S.CritterAuraEnabled do
+            pcall(function()
+                local hrp = getHRP()
+                if not hrp then return end
+                local now = tick()
+                local maxPick = math.clamp(tonumber(S.TargetCount) or 3, 1, 9)
+                local rows = {}
+
+                if S.ResourceAuraEnabled then
+                    local range = S.ResourceRange or 15
+                    local rSq = range * range
+                    local list = collectResourceTargets(hrp, rSq, now)
+                    local picked = pickFrom(list, rSq, maxPick)
+                    rows = mergeRows(rows, picked)
+                end
+
+                if S.StructureAuraEnabled then
+                    local range = S.ResourceRange or 15
+                    local rSq = range * range
+                    local list = collectStructureTargets(hrp, rSq, now)
+                    local picked = pickFrom(list, rSq, maxPick)
+                    rows = mergeRows(rows, picked)
+                end
+
+                if S.CritterAuraEnabled then
+                    local rSq = (S.CritterRange or 15) ^ 2
+                    local list = collectCritterTargets(hrp, rSq, now)
+                    local picked = pickFrom(list, rSq, maxPick)
+                    rows = mergeRows(rows, picked)
+                end
+
+                if #rows > 0 then
+                    fireSwingTool(rows, hrp, { maxPerPacket = math.min(9, maxPick * 3) })
+                    if S.AuraLegitSwing then
+                        fireClientSwing()
+                    end
+                end
+            end)
+            task.wait(S.ResourceCooldown or 0.03)
+        end
+        auraActive = false
+    end)
+end
+
+-- =========================================================
+--  Gold Node / Ice Aura (fast breakage)
+-- =========================================================
+local function startSimpleAura(sField, nameMatch)
+    task.spawn(function()
+        while S[sField] do
+            pcall(function()
+                local hrp = getHRP()
+                if not hrp then return end
+                local params = OverlapParams.new()
+                params.FilterType = Enum.RaycastFilterType.Exclude
+                params.FilterDescendantsInstances = { plr.Character }
+                local parts = workspace:GetPartBoundsInRadius(hrp.Position, 50, params)
+                local seen = {}
+                local rows = {}
+                for _, part in ipairs(parts) do
+                    local m = part.Parent
+                    if m and m:IsA("Model") then
+                        local name = m.Name:lower()
+                        if (type(nameMatch) == "string" and name:find(nameMatch, 1, true))
+                        or (type(nameMatch) == "table" and (name:find(nameMatch[1], 1, true) or name:find(nameMatch[2], 1, true))) then
+                            local eid = readEntityId(m)
+                            if eid and not seen[eid] then
+                                seen[eid] = true
+                                local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                                if pp then
+                                    table.insert(rows, { eid = eid, pos = pp.Position })
+                                end
+                            end
+                        end
+                    end
+                end
+                if #rows > 0 then
+                    fireSwingTool(rows, hrp, { maxPerPacket = math.min(#rows, 9) })
+                end
+            end)
+            task.wait(0.03)
+        end
+    end)
+end
+
+-- =========================================================
+--  AutoChest
+-- =========================================================
+local function getGroundY(pos, excludeChar)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local list = {}
+    if plr.Character then table.insert(list, plr.Character) end
+    if excludeChar then table.insert(list, excludeChar) end
+    params.FilterDescendantsInstances = list
+    local hit = workspace:Raycast(pos + Vector3.new(0, 5, 0), Vector3.new(0, -500, 0), params)
+    return hit and hit.Position.Y or (pos.Y - 4)
+end
+
+local GRAVITY = workspace.Gravity or 196.2
+local function predictLanding(character, maxTime)
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local vel = hrp.AssemblyLinearVelocity
+    local pos = hrp.Position
+    local t = 0
+    local step = 0.05
+    local posXZ = Vector2.new(pos.X, pos.Z)
+    local velXZ = Vector2.new(vel.X, vel.Z)
+    while t <= maxTime do
+        local xz = posXZ + velXZ * t
+        local y = pos.Y + vel.Y * t - 0.5 * GRAVITY * t * t
+        local gy = getGroundY(Vector3.new(xz.X, y, xz.Y))
+        if y <= gy then
+            return Vector3.new(xz.X, gy, xz.Y), t
+        end
+        t += step
+    end
+    return nil
+end
+
+local lastChestPlace = 0
+local lastFallTriggered = false
+local wasAirborne = false
+local function stepAutoChest(dt)
+    if not S.AutoChestEnabled then
+        lastFallTriggered = false; wasAirborne = false; return
+    end
+    local c = plr.Character
+    local hrp = c and c:FindFirstChild("HumanoidRootPart")
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    if not hrp or not h then return end
+
+    local airborne = h.FloorMaterial == Enum.Material.Air
+    local predTime = S.AutoChestPredictionTime or 0.2
+    local vel = hrp.AssemblyLinearVelocity or Vector3.zero
+    local horizVel = Vector3.new(vel.X, 0, vel.Z)
+    local feetY = hrp.Position.Y + vel.Y * predTime - 0.5 * GRAVITY * predTime * predTime
+    local groundYFeet = getGroundY(Vector3.new(hrp.Position.X, feetY, hrp.Position.Z))
+    local dy = feetY - groundYFeet
+
+    local horizLead = horizVel * predTime
+    local placeAnchor
+    if S.AutoChestJumpPrediction then
+        local land = predictLanding(c, 2.0)
+        placeAnchor = land or Vector3.new(hrp.Position.X + horizLead.X, feetY, hrp.Position.Z + horizLead.Z)
+    else
+        placeAnchor = Vector3.new(hrp.Position.X + horizLead.X, feetY, hrp.Position.Z + horizLead.Z)
+    end
+
+    -- Forward offset
+    local md = h.MoveDirection
+    local forward
+    if Vector3.new(md.X, 0, md.Z).Magnitude > 0.05 then
+        forward = Vector3.new(md.X, 0, md.Z).Unit
+    elseif horizVel.Magnitude > 0.15 then
+        forward = horizVel.Unit
+    else
+        local lv = hrp.CFrame.LookVector
+        forward = Vector3.new(lv.X, 0, lv.Z).Unit
+    end
+
+    local basePos = placeAnchor + forward * (S.AutoChestForwardOffset or 0)
+    local chestX, chestZ = basePos.X, basePos.Z
+    local groundYChest = getGroundY(Vector3.new(chestX, hrp.Position.Y, chestZ))
+    local cf = CFrame.new(chestX, groundYChest, chestZ)
+
+    if airborne then
+        wasAirborne = true
+        local vy = (hrp.AssemblyLinearVelocity and hrp.AssemblyLinearVelocity.Y) or 0
+        if vy < 0 and not lastFallTriggered then
+            local thresh = S.AutoChestFallThreshold or 0.6
+            if dy > 0 and dy <= thresh then
+                local now = tick()
+                if now - lastChestPlace >= 0.02 then
+                    firePlaceStructure(S.AutoChestSelectedChest or "Chest", cf)
+                    lastChestPlace = now
+                    lastFallTriggered = true
+                end
+            end
+        end
+    else
+        if wasAirborne then
+            lastFallTriggered = false
+            wasAirborne = false
+        end
+    end
+end
+RunService.Heartbeat:Connect(stepAutoChest)
+
+-- =========================================================
+--  Pinch (place two walls around a target player)
+-- =========================================================
+local function getPinchPingMs()
+    local ms
+    pcall(function()
+        local n = Stats:FindFirstChild("Network")
+        local ss = n and n:FindFirstChild("ServerStatsItem")
+        local dp = ss and ss:FindFirstChild("DataPing")
+        if dp and dp.GetValue then ms = tonumber(dp:GetValue()) end
+    end)
+    if not ms then pcall(function() ms = plr:GetNetworkPing() * 1000 end) end
+    return math.clamp(tonumber(ms) or 80, 1, 2000)
+end
+
+local pinchSmoothVel = Vector3.zero
+local function firePinchBurst(dt)
+    if not S.PinchEnabled then return end
+    local target = nil
+    if S.PinchTargetMode == "Auto Target Mode" then
+        local closest, cd = nil, math.huge
+        local myR = getHRP()
+        if myR then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if isTargetablePlayer(p) then
+                    local hrp = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local d = (hrp.Position - myR.Position).Magnitude
+                        if d < cd then cd = d closest = p end
+                    end
+                end
+            end
+        end
+        target = closest
+    end
+    if not target then return end
+    local char = target.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local h = char and char:FindFirstChildOfClass("Humanoid")
+    if not hrp then return end
+
+    local vel = hrp.AssemblyLinearVelocity or Vector3.zero
+    pinchSmoothVel = pinchSmoothVel:Lerp(Vector3.new(vel.X, 0, vel.Z), math.clamp(dt * 14, 0.1, 0.5))
+    local pingMs = getPinchPingMs()
+    local predTime = math.clamp((pingMs / 1000) * (S.PinchPredictTime or 1) * 1.2, 0.04, 0.7)
+    local moveDir
+    if pinchSmoothVel.Magnitude > 1.25 then moveDir = pinchSmoothVel.Unit
+    elseif h and h.MoveDirection.Magnitude > 0.15 then moveDir = Vector3.new(h.MoveDirection.X, 0, h.MoveDirection.Z).Unit
+    else local lv = hrp.CFrame.LookVector moveDir = Vector3.new(lv.X, 0, lv.Z).Unit end
+
+    local lead = moveDir * (math.max(0, pinchSmoothVel:Dot(moveDir)) * predTime)
+    local targetBase = hrp.Position + lead
+    local yOff = S.PinchYOffset or -3.5
+
+    local rot = CFrame.Angles(0, math.rad(90), 0)
+    local mid = Vector3.new(
+        targetBase.X + (S.PinchShiftX or 0),
+        targetBase.Y + yOff,
+        targetBase.Z + (S.PinchShiftZ or 0)
+    )
+
+    local xBase = S.PinchXOffset or 1.60
+    local zBase = S.PinchZOffset or 0
+    local spacingDominant = math.abs(xBase) >= math.abs(zBase)
+    local cf1, cf2
+    if spacingDominant then
+        cf1 = CFrame.new(mid.X + xBase, mid.Y, mid.Z + zBase) * rot
+        cf2 = CFrame.new(mid.X - xBase, mid.Y, mid.Z + zBase) * rot
+    else
+        cf1 = CFrame.new(mid.X + xBase, mid.Y, mid.Z + zBase) * rot
+        cf2 = CFrame.new(mid.X + xBase, mid.Y, mid.Z - zBase) * rot
+    end
+
+    local itemName = S.PinchItemName or "Crystal Gate"
+    firePlaceStructure(itemName, cf1)
+    firePlaceStructure(itemName, cf2)
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    if S.PinchEnabled then firePinchBurst(dt) end
+end)
+
+-- =========================================================
+--  Quick Hut
+-- =========================================================
+local function executeQuickHut()
+    local myR = getHRP()
+    if not myR then return end
+    local godTarget, normalTarget = nil, nil
+    local godD, normalD = math.huge, math.huge
+    local godNames = { ["God Halo"]=true, ["God Chestplate"]=true, ["God Legs"]=true }
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isTargetablePlayer(p) then
+            local c = p.Character
+            local hrp = c and c:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local d = (hrp.Position - myR.Position).Magnitude
+                if d < 100 then
+                    local hasGod = false
+                    for name in pairs(godNames) do
+                        if c:FindFirstChild(name) then hasGod = true break end
+                    end
+                    if hasGod and d < godD then godD = d godTarget = p end
+                    if d < normalD then normalD = d normalTarget = p end
+                end
+            end
+        end
+    end
+    local t = godTarget or normalTarget
+    if not t then return end
+    local c = t.Character
+    local hrp = c and c:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local vel = hrp.AssemblyLinearVelocity
+    local moveVec = Vector3.new(vel.X, 0, vel.Z)
+    local targetPos
+    if moveVec.Magnitude > 2 then
+        targetPos = hrp.Position + moveVec.Unit * 10
+    else
+        local lv = hrp.CFrame.LookVector
+        local look = Vector3.new(lv.X, 0, lv.Z)
+        if look.Magnitude > 0.01 then look = look.Unit else look = Vector3.new(1, 0, 0) end
+        targetPos = hrp.Position + look * 8
+    end
+    local gy = getGroundY(targetPos, c)
+    local placeCF = CFrame.new(Vector3.new(targetPos.X, gy, targetPos.Z))
+    firePlaceStructure("Big Ol' Hut", placeCF)
+end
+
+-- =========================================================
+--  Auto Drop
+-- =========================================================
+local autoDropState = { lastKey = nil, counts = {}, startCounts = {} }
+
+local function getInventoryCount(itemName)
+    local mainGui = plr.PlayerGui:FindFirstChild("MainGui")
+    local list = mainGui and mainGui.RightPanel and mainGui.RightPanel.Inventory and mainGui.RightPanel.Inventory.List
+    if not list then return 0 end
+    local item = list:FindFirstChild(itemName)
+    if not item then return 0 end
+    local attrCount = item:GetAttribute("Count") or item:GetAttribute("Amount") or item:GetAttribute("Quantity")
+    if attrCount then return tonumber(attrCount) end
+    local qty = item:FindFirstChild("QuantityImage")
+    local txt = qty and qty:FindFirstChild("QuantityText")
+    if txt then return tonumber(txt.Text:gsub("%D", "")) or 0 end
+    return 1
+end
+
+local function getLayoutOrder(itemName)
+    local mainGui = plr.PlayerGui:FindFirstChild("MainGui")
+    local list = mainGui and mainGui.RightPanel and mainGui.RightPanel.Inventory and mainGui.RightPanel.Inventory.List
+    if not list then return nil end
+    local item = list:FindFirstChild(itemName)
+    return item and item.LayoutOrder
+end
+
+local function dynamicDrop(itemName)
+    local slot = getLayoutOrder(itemName)
+    if slot then
+        fireDropBagItem(slot)
+        local c = getInventoryCount(itemName)
+        return c > 10 and 0 or 0.2
+    end
+    return 0.5
+end
+
+task.spawn(function()
+    while true do
+        local waitTime = 0.5
+        if S.AutoDropEnabled and S.DropItem and S.DropItem ~= "" then
+            local parsed = tonumber(S.DropAmount)
+            local hasLimit = parsed ~= nil and parsed > 0
+            local limit = hasLimit and math.floor(parsed) or math.huge
+            local dropKey = tostring(S.DropItem) .. "|" .. (hasLimit and tostring(limit) or "Infinite")
+            if autoDropState.lastKey ~= dropKey then
+                autoDropState.counts = {}
+                autoDropState.startCounts = {}
+                autoDropState.lastKey = dropKey
+            end
+            local droppedAny = false
+            for item in string.gmatch(S.DropItem, "([^,]+)") do
+                local clean = item:match("^%s*(.-)%s*$")
+                if clean ~= "" then
+                    local key = clean:lower()
+                    if hasLimit and autoDropState.startCounts[key] == nil then
+                        autoDropState.startCounts[key] = getInventoryCount(clean)
+                    end
+                    local droppedCount = 0
+                    if hasLimit then
+                        local cur = getInventoryCount(clean)
+                        droppedCount = math.max(0, (autoDropState.startCounts[key] or cur) - cur)
+                        autoDropState.counts[key] = droppedCount
+                    end
+                    if droppedCount < limit then
+                        local d = dynamicDrop(clean)
+                        if d == 0 then droppedAny = true task.wait(0.05)
+                        elseif d == 0.2 then task.wait(0.2)
+                        else task.wait(0.4) end
+                        if hasLimit then
+                            local cur = getInventoryCount(clean)
+                            autoDropState.counts[key] = math.max(0, (autoDropState.startCounts[key] or cur) - cur)
+                        end
+                    end
+                end
+            end
+            if droppedAny then waitTime = 0 end
+        end
+        task.wait(waitTime)
+    end
+end)
+
+-- =========================================================
+--  Coin Presser
+-- =========================================================
+local function getNearbyCoinPresses(range)
+    local r = getHRP(); if not r then return {} end
+    local dep = workspace:FindFirstChild("Deployables")
+    if not dep then return {} end
+    local out = {}
+    for _, obj in ipairs(dep:GetChildren()) do
+        if obj:IsA("Model") then
+            local n = obj.Name:lower()
+            if n:find("coin press", 1, true) or n:find("press", 1, true) then
+                local p = obj:GetPivot().Position
+                if (p - r.Position).Magnitude <= (range or 20) then
+                    local eid = readEntityId(obj)
+                    if eid then table.insert(out, { eid = eid, dist = (p - r.Position).Magnitude }) end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.dist < b.dist end)
+    return out
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if not (S.CoinPresserEnabled or S.MultiCoinPresserEnabled) then continue end
+        if getInventoryCount("Gold") <= 0 then continue end
+        local presses = getNearbyCoinPresses(45)
+        if #presses == 0 then continue end
+        local goldID = autoDiscoverItemID("Gold") or autoDiscoverItemID("Gold Ore")
+        if not goldID then continue end
+        if S.CoinPresserEnabled then
+            fireInteractStructure(presses[1].eid, goldID)
+        end
+        if S.MultiCoinPresserEnabled then
+            for _, p in ipairs(presses) do
+                fireInteractStructure(p.eid, goldID)
+                task.wait(0.05)
+            end
+        end
+    end
+end)
+
+-- =========================================================
+--  Auto Craft
+-- =========================================================
+task.spawn(function()
+    while true do
+        task.wait(S.CraftDelay or 0.5)
+        if not S.AutoCraftEnabled then continue end
+        local id = S.CraftItemID or autoDiscoverItemID(S.CraftItemName)
+        if id and ByteNetReliable then
+            local pkt = getPacketId("CraftItem")
+            if pkt then
+                local b = buffer.create(4)
+                buffer.writeu8(b, 0, 0)
+                buffer.writeu8(b, 1, pkt)
+                buffer.writeu16(b, 2, id)
+                ByteNetReliable:FireServer(b)
+            end
+        end
+    end
+end)
+
+-- =========================================================
+--  Auto Shop Buy
+-- =========================================================
+local function doQuickBuy()
+    local id = autoDiscoverItemID(S.BuyItemName)
+    if not id then return end
+    task.spawn(function()
+        for _ = 1, S.BuyAmount do
+            firePurchaseItem(id, 1)
+            task.wait(0.05)
+        end
+    end)
+end
+
+-- =========================================================
+--  Behind Queen Ant follow
+-- =========================================================
+local queenActive = false
+local function startBehindQueenFollow()
+    if queenActive then return end
+    queenActive = true
+    local cachedQ, cachedQPart, lastSearch = nil, nil, 0
+    task.spawn(function()
+        while S.BehindQueenAnt do
+            pcall(function()
+                local c = plr.Character
+                local h = c and c:FindFirstChildOfClass("Humanoid")
+                local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                if not h or not hrp or h.Health <= 0 then task.wait(0.1) return end
+
+                local now = tick()
+                if not cachedQ or not cachedQ.Parent then
+                    if now - lastSearch < 0.5 then task.wait(0.05) return end
+                    lastSearch = now
+                    local folder = workspace:FindFirstChild("Critters")
+                    if not folder then task.wait(0.2) return end
+                    for _, child in ipairs(folder:GetChildren()) do
+                        if child:IsA("Model") and child.Name == "Queen Ant" then
+                            cachedQ = child
+                            break
+                        end
+                    end
+                end
+                if not cachedQ or not cachedQ.Parent then task.wait(0.1) return end
+
+                if not cachedQPart or not cachedQPart.Parent then
+                    cachedQPart = cachedQ.PrimaryPart or cachedQ:FindFirstChild("HumanoidRootPart") or cachedQ:FindFirstChildWhichIsA("BasePart")
+                end
+                if not cachedQPart then task.wait(0.1) return end
+
+                local studs = math.clamp(tonumber(S.BehindQueenAntStuds) or 3, 0, 10)
+                local look = cachedQPart.CFrame.LookVector
+                local flat = Vector3.new(look.X, 0, look.Z)
+                local dir
+                if flat.Magnitude > 0.05 then
+                    dir = flat.Unit
+                else
+                    local toMe = Vector3.new(hrp.Position.X - cachedQPart.Position.X, 0, hrp.Position.Z - cachedQPart.Position.Z)
+                    dir = toMe.Magnitude > 0.05 and (-toMe.Unit) or Vector3.new(0, 0, 1)
+                end
+
+                local behind = cachedQPart.Position - dir * studs
+                local goal = Vector3.new(behind.X, hrp.Position.Y, behind.Z)
+                local dist = (Vector3.new(goal.X - hrp.Position.X, 0, goal.Z - hrp.Position.Z)).Magnitude
+                local deadzone = math.max(0.6, studs * 0.15)
+                if dist > deadzone then
+                    h:MoveTo(goal)
+                else
+                    h:MoveTo(hrp.Position)
+                end
+            end)
+            task.wait(0.05)
+        end
+        queenActive = false
+    end)
+end
+
+-- =========================================================
+--  Crystal Guardian Farm
+-- =========================================================
+local crystalActive = false
+local function getCrystalGuardian()
+    local res = workspace:FindFirstChild("Resources")
+    if not res then return nil end
+    local outer = res:FindFirstChild("Crystal Guardian")
+    if not outer then return nil end
+    if outer:IsA("BasePart") then return outer end
+    for _, d in ipairs(outer:GetDescendants()) do
+        if d:IsA("BasePart") and d.Name == "Crystal Guardian" then return d end
+    end
+    if outer:IsA("Model") then return outer end
+    return outer:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function startCrystalGuardianFarm()
+    if crystalActive then return end
+    crystalActive = true
+    task.spawn(function()
+        while S.CrystalGuardianFarm do
+            pcall(function()
+                local c = plr.Character
+                local h = c and c:FindFirstChildOfClass("Humanoid")
+                local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                if not h or not hrp then task.wait(0.1) return end
+
+                -- Ensure resource aura on
+                if not S.ResourceAuraEnabled then
+                    S.ResourceAuraEnabled = true
+                    startAuraLoop()
+                end
+
+                local g = getCrystalGuardian()
+                if not g then task.wait(0.25) return end
+                local cf = g:IsA("BasePart") and g.CFrame or g:GetPivot()
+                local targetPos = cf.Position
+
+                local away = Vector3.new(hrp.Position.X - targetPos.X, 0, hrp.Position.Z - targetPos.Z)
+                local dir
+                if away.Magnitude > 0.15 then dir = away.Unit else
+                    local lv = hrp.CFrame.LookVector
+                    dir = Vector3.new(lv.X, 0, lv.Z).Magnitude > 0.15 and -Vector3.new(lv.X, 0, lv.Z).Unit or Vector3.new(1, 0, 0)
+                end
+                local desired = 5
+                local goal = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z) + dir * desired
+                local dist = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(goal.X, 0, goal.Z)).Magnitude
+                if dist > 0.6 then
+                    h:MoveTo(goal)
+                    local speed = tonumber(S.CrystalGuardianSpeed) or 20
+                    h.WalkSpeed = speed
+                else
+                    h:MoveTo(hrp.Position)
+                end
+            end)
+            task.wait(0.05)
+        end
+        crystalActive = false
+    end)
+end
+
+-- =========================================================
+--  Auto Sand Farm
+-- =========================================================
+local function getSandMoundAtSpot(spot)
+    local res = workspace:FindFirstChild("Resources")
+    if not res or not spot then return nil end
+    local best, bd
+    for _, m in ipairs(res:GetChildren()) do
+        if m.Name == "Sand Mound" or m.Name == "_MOUND" then
+            local ok, p = pcall(function() return m:GetPivot().Position end)
+            if ok and p then
+                local d = math.abs(p.X - spot.x) + math.abs(p.Z - spot.z)
+                if d < 9 and (not bd or d < bd) then bd = d best = m end
+            end
+        end
+    end
+    return best
+end
+
+local function fireSandDig(spot, eid)
+    if not ByteNetReliable then return end
+    local digId = getPacketId("Dig")
+    if not digId then return end
+    local n = math.floor(tonumber(eid) or 0)
+    if n > 0 then
+        local b = buffer.create(19)
+        buffer.writeu8(b, 0, 0)
+        buffer.writeu8(b, 1, digId)
+        buffer.writeu8(b, 2, 1)
+        buffer.writeu32(b, 3, n)
+        buffer.writef32(b, 7, spot.x)
+        buffer.writef32(b, 11, spot.y)
+        buffer.writef32(b, 15, spot.z)
+        ByteNetReliable:FireServer(b)
+    else
+        local b = buffer.create(15)
+        buffer.writeu8(b, 0, 0)
+        buffer.writeu8(b, 1, digId)
+        buffer.writeu8(b, 2, 0)
+        buffer.writef32(b, 3, spot.x)
+        buffer.writef32(b, 7, spot.y)
+        buffer.writef32(b, 11, spot.z)
+        ByteNetReliable:FireServer(b)
+    end
+end
+
+local sandActive = false
+local function startAutoSand()
+    if sandActive then return end
+    sandActive = true
+    task.spawn(function()
+        while S.AutoSandEnabled do
+            pcall(function()
+                local hrp = getHRP(); if not hrp then return end
+                if not S.SandFarmSpot then
+                    S.SandFarmSpot = { x = math.floor(hrp.Position.X + 0.5), y = hrp.Position.Y - (S.SandHeight or 1), z = math.floor(hrp.Position.Z + 0.5) }
+                end
+                local spot = S.SandFarmSpot
+                local mound = getSandMoundAtSpot(spot)
+                local eid = mound and readEntityId(mound)
+                if S.SandFarmPhase == "dig" then
+                    local count = 0
+                    local res = workspace:FindFirstChild("Resources")
+                    if res then
+                        for _, m in ipairs(res:GetChildren()) do
+                            if m.Name == "Sand Mound" then
+                                local ok, p = pcall(function() return m:GetPivot().Position end)
+                                if ok and p and math.abs(p.X - spot.x) < 3 and math.abs(p.Z - spot.z) < 3 then count += 1 end
+                            end
+                        end
+                    end
+                    if count >= (S.SandAmount or 1) then
+                        S.SandFarmPhase = "break"
+                    else
+                        fireSandDig(spot, eid)
+                    end
+                else
+                    if eid then
+                        fireSwingTool({ { eid = eid, pos = Vector3.new(spot.x, spot.y + 1, spot.z) } }, hrp, { maxPerPacket = 1 })
+                        task.wait(S.SandFarmSpeed or 0.4)
+                        S.SandFarmPhase = "dig"
+                    else
+                        S.SandFarmPhase = "dig"
+                    end
+                end
+            end)
+            task.wait(S.SandFarmSpeed or 0.4)
+        end
+        sandActive = false
+        S.SandFarmSpot = nil
+        S.SandFarmPhase = "dig"
+    end)
+end
+
+-- =========================================================
+--  Potions
+-- =========================================================
+local function getNearestCauldron(range)
+    local r = getHRP(); if not r then return nil end
+    range = range or S.PotionRange or 15
+    local best, bd = nil, range
+    for _, m in ipairs(CollectionService:GetTagged("Cauldron")) do
+        if m:IsA("Model") then
+            local eid = readEntityId(m)
+            if eid then
+                local d = (m:GetPivot().Position - r.Position).Magnitude
+                if d < bd then bd = d best = eid end
+            end
+        end
+    end
+    if not best then
+        local dep = workspace:FindFirstChild("Deployables")
+        if dep then
+            for _, m in ipairs(dep:GetChildren()) do
+                if m:IsA("Model") and m.Name:find("Cauldron") then
+                    local eid = readEntityId(m)
+                    if eid then
+                        local d = (m:GetPivot().Position - r.Position).Magnitude
+                        if d < bd then bd = d best = eid end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+task.spawn(function()
+    while true do
+        task.wait(S.PotionCraftDelay or 0.5)
+        if not S.AutoCraftPotion then continue end
+        local itemID = autoDiscoverItemID(S.SelectedPotion)
+        local cid = getNearestCauldron(S.PotionRange)
+        if itemID and cid and ByteNetReliable then
+            local craftId = getPacketId("CraftPotion")
+            if craftId then
+                local b = buffer.create(8)
+                buffer.writeu8(b, 0, 0)
+                buffer.writeu8(b, 1, craftId)
+                buffer.writeu32(b, 2, cid)
+                buffer.writeu16(b, 6, itemID)
+                ByteNetReliable:FireServer(b)
+            end
+        end
+    end
+end)
+
+-- =========================================================
+--  Auto Rebirth / Respawn
+-- =========================================================
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if not S.AutoRebirthEnabled then continue end
+        pcall(function()
+            local topbar = plr.PlayerGui:FindFirstChild("Topbar")
+            local label = topbar and topbar.Topbar.Right.Level.Level
+            if label then
+                local lvl = tonumber(label.Text:match("%d+")) or 0
+                if lvl >= (S.RebirthLevel or 101) then
+                    fireRebirth()
+                    task.wait(5)
+                end
+            end
+        end)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if not S.AutoRespawnEnabled then continue end
+        pcall(function()
+            local hrp = getHRP()
+            if not hrp then return end
+            local spawnMenuPos = Vector3.new(-1686.31201, -3, -2534.19409)
+            if (hrp.Position - spawnMenuPos).Magnitude <= 5 then
+                local rId = getPacketId("RequestBedSpawn")
+                if rId and ByteNetReliable then
+                    task.wait(2)
+                    local b = buffer.create(4)
+                    buffer.writeu8(b, 0, 0)
+                    buffer.writeu8(b, 1, rId)
+                    buffer.writeu16(b, 2, 128)
+                    ByteNetReliable:FireServer(b)
+                end
+            end
+        end)
+    end
+end)
+
+-- =========================================================
+--  Item Deletion
+-- =========================================================
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if not S.ItemDeletionEnabled or S.ItemDeletion == "" then continue end
+        pcall(function()
+            local itemsToDelete = {}
+            for word in string.gmatch(S.ItemDeletion, "([^,]+)") do
+                local clean = word:match("^%s*(.-)%s*$"):lower()
+                if clean ~= "" then itemsToDelete[clean] = true end
+            end
+            local itemsFolder = workspace:FindFirstChild("Items")
+            if itemsFolder then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    if itemsToDelete[item.Name:lower()] then item:Destroy() end
+                end
+            end
+            local dep = workspace:FindFirstChild("Deployables")
+            if dep then
+                for _, chest in ipairs(dep:GetChildren()) do
+                    if (chest.Name:find("Chest") or chest.Name:find("Box")) and chest:FindFirstChild("Contents") then
+                        for _, item in ipairs(chest.Contents:GetChildren()) do
+                            if itemsToDelete[item.Name:lower()] then item:Destroy() end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- =========================================================
+--  Tool auto-equip (Gold Farm)
+-- =========================================================
+local function findNearbyPlantBox(hrp, range)
+    if not hrp then return false end
+    range = range or 25
+    local dep = workspace:FindFirstChild("Deployables")
+    if not dep then return false end
+    local rSq = range * range
+    for _, m in ipairs(dep:GetChildren()) do
+        if m.Name == "Plant Box" then
+            local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+            if pp and (pp.Position - hrp.Position).Magnitude ^ 2 <= rSq then return true end
+        end
+    end
+    return false
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.4)
+        if not S.GoldAutoEquip then continue end
+        pcall(function()
+            local hrp = getHRP(); if not hrp then return end
+            if findNearbyPlantBox(hrp, 30) then
+                local hoe = S.GoldHoeType or "Wood Hoe"
+                if not isToolEquipped(hoe) then
+                    equipItem(hoe)
+                    task.wait(0.35)
+                end
+            else
+                if not isToolEquipped("God Pick") then
+                    equipItem("God Pick")
+                    task.wait(0.35)
+                end
+            end
+        end)
+    end
+end)
+
+-- =========================================================
+--  Gold Farm (Tween Circuit)
+-- =========================================================
+local goldActive = false
+local currentWaypoint = 1
+local movementConn
+
+local function rayParams()
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    if plr.Character then rp.FilterDescendantsInstances = { plr.Character } end
+    return rp
+end
+
+local function wouldTweenHitTerrain(startPos, endPos)
+    local rp = rayParams()
+    local dir = endPos - startPos
+    for i = 0, 3 do
+        local t = i / 3
+        local sample = startPos + dir * t
+        local hit = workspace:Raycast(sample, Vector3.new(0, -5, 0), rp)
+        if hit and sample.Y < hit.Position.Y then return true end
+    end
+    return false
+end
+
+local function isPathClear(startPos, endPos)
+    local rp = rayParams()
+    local dir = (endPos - startPos).Unit
+    local rayOrigin = startPos + Vector3.new(0, 2, 0)
+    local rayDir = (endPos + Vector3.new(0, 2, 0)) - rayOrigin
+    local hit = workspace:Raycast(rayOrigin, rayDir, rp)
+    if hit then
+        local hd = (hit.Position - rayOrigin).Magnitude
+        if hd < (endPos - startPos).Magnitude * 0.9 then return false end
+    end
+    return true
+end
+
+local function startMovementEngine()
+    if movementConn then return end
+    movementConn = RunService.Heartbeat:Connect(function()
+        if not S.GoldCircuitEnabled then return end
+        if #S.RecordedPositions == 0 then return end
+        local hrp = getHRP()
+        local h = getHum()
+        if not hrp or not h then return end
+        if currentWaypoint > #S.RecordedPositions then currentWaypoint = 1 end
+        local wp = S.RecordedPositions[currentWaypoint]
+        if not wp then return end
+        local target = Vector3.new(wp.X or wp.x, wp.Y or wp.y, wp.Z or wp.z)
+        local dist = (target - hrp.Position).Magnitude
+        if dist <= 3 then
+            local waitTime = wp.waitTime or 0
+            if waitTime > 0 then
+                task.wait(waitTime)
+            end
+            currentWaypoint += 1
+            if currentWaypoint > #S.RecordedPositions then currentWaypoint = 1 end
+            return
+        end
+
+        local baseSpeed = tonumber(S.GoldSpeed) or 21
+        local heightDiff = target.Y - hrp.Position.Y
+        local shouldTween = S.TweenOnly or wouldTweenHitTerrain(hrp.Position, target) or heightDiff > 6 or not isPathClear(hrp.Position, target)
+
+        if shouldTween then
+            if not alignPosition then createAlignPosition(hrp) end
+            alignAttachment1.WorldPosition = target
+            alignPosition.MaxVelocity = baseSpeed
+            isTweening = true
+            noclipChar()
+        else
+            walkToWaypoint(hrp, h, target, baseSpeed)
+        end
+        h.WalkSpeed = S.WalkSpeedEnabled and S.WalkSpeed or baseSpeed
+    end)
+end
+
+local function stopGoldCircuit()
+    S.GoldCircuitEnabled = false
+    if movementConn then
+        movementConn:Disconnect()
+        movementConn = nil
+    end
+    local hrp = getHRP()
+    if hrp then
+        local bv = hrp:FindFirstChild("CrystallizedBodyVelocity")
+        if bv then bv:Destroy() end
+        local bg = hrp:FindFirstChild("CrystallizedBodyGyro")
+        if bg then bg:Destroy() end
+    end
+    if alignPosition then alignPosition:Destroy() alignPosition = nil end
+    if alignAttachment0 then alignAttachment0:Destroy() alignAttachment0 = nil end
+    if alignAttachment1 then alignAttachment1:Destroy() alignAttachment1 = nil end
+    isTweening = false
+    restoreCollision()
+    goldActive = false
+end
+
+local function startGoldCircuit()
+    if goldActive then return end
+    goldActive = true
+    startMovementEngine()
+    task.spawn(function()
+        while S.GoldCircuitEnabled do task.wait(0.5) end
+        stopGoldCircuit()
+    end)
+end
+
+-- Waypoint visualization
+local function updateVisualNodes()
+    local f = workspace:FindFirstChild("CrystallizedNodes")
+    if not S.GoldVisual then
+        if f then f:Destroy() end
+        return
+    end
+    if not f then
+        f = Instance.new("Folder")
+        f.Name = "CrystallizedNodes"
+        f.Parent = workspace
+    end
+    f:ClearAllChildren()
+    for i, pos in ipairs(S.RecordedPositions) do
+        local x, y, z = pos.X or pos.x, pos.Y or pos.y, pos.Z or pos.z
+        if x and y and z then
+            local p = Instance.new("Part", f)
+            p.Size = Vector3.new(0.3, 0.3, 0.3)
+            p.Position = Vector3.new(x, y, z)
+            p.Anchored = true
+            p.CanCollide = false
+            p.Color = Color3.fromRGB(255, 215, 0)
+            p.Material = Enum.Material.Neon
+            p.Transparency = 0.4
+        end
+    end
+end
+
+-- =========================================================
+--  Staff Detection (background)
+-- =========================================================
+local BOOGA_GROUP_ID = 15829231
+local function getRole(player)
+    if not player then return nil end
+    local ok1, inGroup = pcall(function() return player:IsInGroup(BOOGA_GROUP_ID) end)
+    if not ok1 or not inGroup then return nil end
+    local ok2, role = pcall(function() return player:GetRoleInGroup(BOOGA_GROUP_ID) end)
+    if not ok2 then return nil end
+    return role
+end
+
+task.spawn(function()
+    while true do
+        task.wait(4)
+        if not S.StaffDetectionsEnabled and not S.LeaveOnStaff then continue end
+        local staff = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= plr then
+                local role = getRole(p)
+                if role then
+                    local label = role:match("|%s*(.+)$") or role
+                    label = label:gsub("^%s+", ""):gsub("%s+$", "")
+                    local lower = string.lower(label)
+                    if lower:find("staff", 1, true)
+                    or lower:find("admin", 1, true)
+                    or lower:find("manager", 1, true)
+                    or lower:find("owner", 1, true)
+                    or lower:find("clan owner", 1, true) then
+                        table.insert(staff, { name = p.Name, role = label })
+                    end
+                end
+            end
+        end
+        if #staff > 0 then
+            local msg = "Staff detected: "
+            for i, s in ipairs(staff) do
+                msg ..= s.name .. " (" .. s.role .. ")"
+                if i < #staff then msg ..= ", " end
+            end
+            Rayfield:Notify({ Title = "⚠ Staff Alert", Content = msg, Duration = 6 })
+            if S.LeaveOnStaff then
+                task.wait(0.5)
+                plr:Kick("\n\nCrystallized: Staff detected — left server.")
+                break
+            end
+        end
+    end
+end)
+
+-- =========================================================
+--  ESP systems
+-- =========================================================
+local function getESPChar(p)
+    if not p then return nil end
+    local pf = workspace:FindFirstChild("Players")
+    if pf then
+        local c = pf:FindFirstChild(p.Name)
+        if c then return c end
+    end
+    return p.Character
+end
+
+local TribeColors = {
+    ["Yellow"]=Color3.fromRGB(255,200,0),["Green"]=Color3.fromRGB(0,255,0),
+    ["Red"]=Color3.fromRGB(255,0,0),["Violet"]=Color3.fromRGB(255,39,245),
+    ["Blue"]=Color3.fromRGB(13,105,172),["Grey"]=Color3.fromRGB(75,75,75),
+    ["Teal"]=Color3.fromRGB(88,255,219),["Olive"]=Color3.fromRGB(128,128,0),
+    ["White"]=Color3.fromRGB(200,200,200),["Black"]=Color3.fromRGB(0,0,0),
+    ["Orange"]=Color3.fromRGB(255,170,0),["Brown"]=Color3.fromRGB(124,92,70),
+    ["Maroon"]=Color3.fromRGB(128,0,0),["Purple"]=Color3.fromRGB(61,21,133),
+}
+
+-- Player ESP (ASTER style)
+local playerESPs = {}
+local function destroyPlayerESP(p)
+    local d = playerESPs[p]
+    if not d then return end
+    if d.h then d.h:Destroy() end
+    if d.bg then d.bg:Destroy() end
+    if d.overlay then d.overlay:Destroy() end
+    playerESPs[p] = nil
+end
+
+local function buildPlayerESP(p)
+    local c = getESPChar(p)
+    if not c then return end
+    local hrp = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart
+    local head = c:FindFirstChild("Head") or hrp
+    if not hrp or not head then return end
+
+    local col = S.ESPColors["PlayerESP"] or Color3.fromRGB(255,105,180)
+    if p.Team and TribeColors[p.Team.Name] then col = TribeColors[p.Team.Name] end
+
+    local h = Instance.new("Highlight")
+    h.FillColor = col
+    h.OutlineColor = col
+    h.FillTransparency = 0.5
+    h.OutlineTransparency = 0
+    h.Adornee = c
+    h.Parent = c
+
+    local bg = Instance.new("BillboardGui")
+    bg.Name = "CrystallizedPlayerESP"
+    bg.Adornee = head
+    bg.Size = UDim2.new(0, 220, 0, 50)
+    bg.StudsOffset = Vector3.new(0, 5, 0)
+    bg.AlwaysOnTop = true
+    bg.Parent = c
+
+    local txt = Instance.new("TextLabel", bg)
+    txt.Size = UDim2.new(1, 0, 1, 0)
+    txt.BackgroundTransparency = 1
+    txt.Font = Enum.Font.GothamBold
+    txt.TextSize = 12
+    txt.TextColor3 = col
+    txt.TextStrokeTransparency = 1
+    txt.Text = p.Name
+
+    local stroke = Instance.new("UIStroke", txt)
+    stroke.Thickness = 0.6
+    stroke.Color = Color3.new(0, 0, 0)
+
+    playerESPs[p] = { h = h, bg = bg, text = txt, adorn = hrp }
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.15)
+        local myHrp = getHRP()
+        for p, _ in pairs(playerESPs) do
+            if not p.Character or not p.Character.Parent then destroyPlayerESP(p) end
+        end
+        if not S.PlayerESPEnabled then
+            for p in pairs(playerESPs) do destroyPlayerESP(p) end
+            continue
+        end
+        if not myHrp then continue end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= plr then
+                local c = getESPChar(p)
+                if not c then destroyPlayerESP(p) continue end
+                if S.HideTeams and p.Team == plr.Team and p.Team.Name ~= "NoTribe" then
+                    destroyPlayerESP(p) continue
+                end
+                local hrp = c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart
+                if not hrp then destroyPlayerESP(p) continue end
+                if not playerESPs[p] or not playerESPs[p].bg or not playerESPs[p].bg.Parent then
+                    pcall(buildPlayerESP, p)
+                end
+                local d = playerESPs[p]
+                if d and d.text then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    local col = S.ESPColors["PlayerESP"] or Color3.fromRGB(255,105,180)
+                    if p.Team and TribeColors[p.Team.Name] then col = TribeColors[p.Team.Name] end
+                    d.text.TextColor3 = col
+                    d.h.FillColor = col
+                    d.h.OutlineColor = col
+                    d.text.Text = string.format("%s [%d]", p.Name, math.floor(dist))
+                end
+            end
+        end
+    end
+end)
+
+-- Critter ESP
+local critterESP = {}
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if not S.CritterESPEnabled then
+            for m, d in pairs(critterESP) do
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                critterESP[m] = nil
+            end
+            continue
+        end
+        local myHrp = getHRP(); if not myHrp then continue end
+        local folder = workspace:FindFirstChild("Critters"); if not folder then continue end
+        local active = {}
+        for _, m in ipairs(folder:GetChildren()) do
+            if m:IsA("Model") then
+                local name = m.Name
+                local show = S.SelectedCritters.All or S.SelectedCritters[name]
+                if show then
+                    active[m] = true
+                    if not critterESP[m] then
+                        local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                        if pp then
+                            local col = S.ESPColors["Critter ESP"] or Color3.fromRGB(255,150,50)
+                            local hl = Instance.new("Highlight", m)
+                            hl.FillColor = col; hl.OutlineColor = col
+                            hl.FillTransparency = 0.5; hl.Adornee = m
+                            local bg = Instance.new("BillboardGui", m)
+                            bg.Adornee = pp
+                            bg.Size = UDim2.new(0, 200, 0, 30)
+                            bg.StudsOffset = Vector3.new(0, 5, 0)
+                            bg.AlwaysOnTop = true
+                            local txt = Instance.new("TextLabel", bg)
+                            txt.BackgroundTransparency = 1
+                            txt.Size = UDim2.new(1, 0, 1, 0)
+                            txt.TextColor3 = col
+                            txt.Font = Enum.Font.GothamBold
+                            txt.TextSize = 12
+                            critterESP[m] = { hl = hl, bg = bg, txt = txt, adorn = pp }
+                        end
+                    end
+                    local d = critterESP[m]
+                    if d and d.txt and d.adorn then
+                        local dist = (d.adorn.Position - myHrp.Position).Magnitude
+                        d.txt.Text = string.format("%s [%d]", name, math.floor(dist))
+                    end
+                end
+            end
+        end
+        for m, d in pairs(critterESP) do
+            if not active[m] or not m.Parent then
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                critterESP[m] = nil
+            end
+        end
+    end
+end)
+
+-- Ore ESP
+local oreESP = {}
+local oreColors = {
+    ["Gold Node"]=Color3.fromRGB(255,215,0),["Iron Node"]=Color3.fromRGB(200,200,200),
+    ["Coal Node"]=Color3.fromRGB(40,40,40),["Adurite Node"]=Color3.fromRGB(255,50,50),
+    ["Emerald Lode"]=Color3.fromRGB(80,200,120),["Pink Diamond Lode"]=Color3.fromRGB(255,105,180),
+    ["Crystal Lode"]=Color3.fromRGB(0,255,255),
+}
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if not S.OreESPEnabled then
+            for m, d in pairs(oreESP) do
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                oreESP[m] = nil
+            end
+            continue
+        end
+        local myHrp = getHRP(); if not myHrp then continue end
+        local res = workspace:FindFirstChild("Resources"); if not res then continue end
+        local active = {}
+        for _, m in ipairs(res:GetChildren()) do
+            if m:IsA("Model") and S.SelectedOres[m.Name] then
+                active[m] = true
+                local col = oreColors[m.Name] or Color3.fromRGB(255,255,255)
+                if not oreESP[m] then
+                    local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                    if pp then
+                        local hl = Instance.new("Highlight", m)
+                        hl.FillColor = col; hl.OutlineColor = col
+                        hl.FillTransparency = 0.5; hl.Adornee = m
+                        local bg = Instance.new("BillboardGui", m)
+                        bg.Adornee = pp
+                        bg.Size = UDim2.new(0, 200, 0, 30)
+                        bg.StudsOffset = Vector3.new(0, 5, 0)
+                        bg.AlwaysOnTop = true
+                        local txt = Instance.new("TextLabel", bg)
+                        txt.BackgroundTransparency = 1
+                        txt.Size = UDim2.new(1, 0, 1, 0)
+                        txt.TextColor3 = col
+                        txt.Font = Enum.Font.GothamBold
+                        txt.TextSize = 12
+                        oreESP[m] = { hl = hl, bg = bg, txt = txt, adorn = pp }
+                    end
+                end
+                local d = oreESP[m]
+                if d and d.txt and d.adorn then
+                    local dist = (d.adorn.Position - myHrp.Position).Magnitude
+                    d.txt.Text = string.format("%s [%d]", m.Name, math.floor(dist))
+                end
+            end
+        end
+        for m, d in pairs(oreESP) do
+            if not active[m] or not m.Parent then
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                oreESP[m] = nil
+            end
+        end
+    end
+end)
+
+-- Item ESP (query)
+local itemESP = {}
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if not S.ItemESPEnabled or S.ItemESPQuery == "" then
+            for m, d in pairs(itemESP) do
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                itemESP[m] = nil
+            end
+            continue
+        end
+        local myHrp = getHRP(); if not myHrp then continue end
+        local folder = workspace:FindFirstChild("Items") or workspace:FindFirstChild("DroppedItems")
+        if not folder then continue end
+        local queries = {}
+        for q in string.gmatch(S.ItemESPQuery, "([^,]+)") do
+            local clean = q:match("^%s*(.-)%s*$"):lower()
+            if clean ~= "" then table.insert(queries, clean) end
+        end
+        local active = {}
+        for _, item in ipairs(folder:GetChildren()) do
+            local lower = item.Name:lower()
+            local match = false
+            for _, q in ipairs(queries) do
+                if lower:find(q, 1, true) then match = true break end
+            end
+            if match then
+                active[item] = true
+                if not itemESP[item] then
+                    local pp = item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")) or item
+                    if pp then
+                        local col = S.ESPColors["Item ESP"] or Color3.fromRGB(0,255,140)
+                        local hl = Instance.new("Highlight", item)
+                        hl.FillColor = col; hl.OutlineColor = col
+                        hl.FillTransparency = 0.6; hl.Adornee = item
+                        local bg = Instance.new("BillboardGui", item)
+                        bg.Adornee = pp
+                        bg.Size = UDim2.new(0, 180, 0, 28)
+                        bg.StudsOffset = Vector3.new(0, 2.5, 0)
+                        bg.AlwaysOnTop = true
+                        local txt = Instance.new("TextLabel", bg)
+                        txt.BackgroundTransparency = 1
+                        txt.Size = UDim2.new(1, 0, 1, 0)
+                        txt.TextColor3 = col
+                        txt.Font = Enum.Font.GothamBold
+                        txt.TextSize = 12
+                        itemESP[item] = { hl = hl, bg = bg, txt = txt, adorn = pp }
+                    end
+                end
+                local d = itemESP[item]
+                if d and d.txt and d.adorn then
+                    local dist = (d.adorn.Position - myHrp.Position).Magnitude
+                    d.txt.Text = string.format("%s [%d]", item.Name, math.floor(dist))
+                end
+            end
+        end
+        for m, d in pairs(itemESP) do
+            if not active[m] or not m.Parent then
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                itemESP[m] = nil
+            end
+        end
+    end
+end)
+
+-- Wandering Trader ESP
+local traderHL, traderBG
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if not S.WanderingTraderESPEnabled then
+            if traderHL then traderHL:Destroy() traderHL = nil end
+            if traderBG then traderBG:Destroy() traderBG = nil end
+            continue
+        end
+        local npc = workspace:FindFirstChild("DialogNPCs")
+        local normal = npc and npc:FindFirstChild("Normal")
+        local trader = normal and normal:FindFirstChild("Wandering Trader")
+        if trader then
+            local col = S.ESPColors["Wandering Trader ESP"] or Color3.fromRGB(255,200,0)
+            if not traderHL or not traderHL.Parent then
+                traderHL = Instance.new("Highlight")
+                traderHL.FillColor = col
+                traderHL.OutlineColor = col
+                traderHL.FillTransparency = 0.5
+                traderHL.Adornee = trader
+                traderHL.Parent = trader
+            else
+                traderHL.FillColor = col
+                traderHL.OutlineColor = col
+                traderHL.Adornee = trader
+            end
+            local head = trader:FindFirstChild("Head") or trader.PrimaryPart
+            if head then
+                if not traderBG or not traderBG.Parent then
+                    traderBG = Instance.new("BillboardGui")
+                    traderBG.Adornee = head
+                    traderBG.Size = UDim2.new(0, 200, 0, 40)
+                    traderBG.StudsOffset = Vector3.new(0, 4, 0)
+                    traderBG.AlwaysOnTop = true
+                    traderBG.Parent = trader
+                    local t = Instance.new("TextLabel", traderBG)
+                    t.Name = "TraderLabel"
+                    t.Size = UDim2.new(1, 0, 1, 0)
+                    t.BackgroundTransparency = 1
+                    t.Font = Enum.Font.GothamBold
+                    t.TextSize = 13
+                    t.TextStrokeTransparency = 0.5
+                    t.Text = "Wandering Trader"
+                end
+                traderBG.Adornee = head
+                local t = traderBG:FindFirstChild("TraderLabel")
+                if t then t.TextColor3 = col end
+            end
+        else
+            if traderHL then traderHL:Destroy() traderHL = nil end
+            if traderBG then traderBG:Destroy() traderBG = nil end
+        end
+    end
+end)
+
+-- Meteor / God Boss ESP
+local meteorESP, godBossESP = {}, {}
+task.spawn(function()
+    while true do
+        task.wait(0.25)
+        -- Meteor
+        for m, d in pairs(meteorESP) do
+            if not m.Parent or not S.MeteorCoreESPEnabled then
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                meteorESP[m] = nil
+            end
+        end
+        if S.MeteorCoreESPEnabled then
+            local myHrp = getHRP()
+            for _, c in ipairs(workspace:GetChildren()) do
+                if c.Name == "Meteor Core" or c.Name == "Crystal Meteor Core" then
+                    if not meteorESP[c] then
+                        local pp = c:IsA("Model") and (c.PrimaryPart or c:FindFirstChildWhichIsA("BasePart")) or c
+                        if pp then
+                            local col = S.ESPColors["Meteor Core ESP"] or Color3.fromRGB(170,85,255)
+                            local hl = Instance.new("Highlight", c)
+                            hl.FillColor = col; hl.OutlineColor = col
+                            hl.FillTransparency = 0.5; hl.Adornee = c
+                            local bg = Instance.new("BillboardGui", c)
+                            bg.Adornee = pp
+                            bg.Size = UDim2.new(0, 220, 0, 40)
+                            bg.StudsOffset = Vector3.new(0, 5, 0)
+                            bg.AlwaysOnTop = true
+                            local txt = Instance.new("TextLabel", bg)
+                            txt.BackgroundTransparency = 1
+                            txt.Size = UDim2.new(1, 0, 1, 0)
+                            txt.TextColor3 = col
+                            txt.Font = Enum.Font.GothamBold
+                            txt.TextSize = 13
+                            meteorESP[c] = { hl = hl, bg = bg, txt = txt, adorn = pp }
+                        end
+                    end
+                    local d = meteorESP[c]
+                    if d and d.txt and d.adorn and myHrp then
+                        local dist = (d.adorn.Position - myHrp.Position).Magnitude
+                        d.txt.Text = string.format("%s [%d]", c.Name, math.floor(dist))
+                    end
+                end
+            end
+        end
+
+        -- God Bosses
+        for m, d in pairs(godBossESP) do
+            if not m.Parent or not S.GodBossESPEnabled then
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                godBossESP[m] = nil
+            end
+        end
+        if S.GodBossESPEnabled then
+            local myHrp = getHRP()
+            local res = workspace:FindFirstChild("Resources")
+            if res then
+                for _, m in ipairs(res:GetChildren()) do
+                    if m:IsA("Model") and S.SelectedGodBosses[m.Name] then
+                        if not godBossESP[m] then
+                            local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                            if pp then
+                                local col = S.ESPColors["God Boss ESP"] or Color3.fromRGB(255,0,0)
+                                local hl = Instance.new("Highlight", m)
+                                hl.FillColor = col; hl.OutlineColor = col
+                                hl.FillTransparency = 0.5; hl.Adornee = m
+                                local bg = Instance.new("BillboardGui", m)
+                                bg.Adornee = pp
+                                bg.Size = UDim2.new(0, 220, 0, 40)
+                                bg.StudsOffset = Vector3.new(0, 5, 0)
+                                bg.AlwaysOnTop = true
+                                local txt = Instance.new("TextLabel", bg)
+                                txt.BackgroundTransparency = 1
+                                txt.Size = UDim2.new(1, 0, 1, 0)
+                                txt.TextColor3 = col
+                                txt.Font = Enum.Font.GothamBold
+                                txt.TextSize = 13
+                                godBossESP[m] = { hl = hl, bg = bg, txt = txt, adorn = pp }
+                            end
+                        end
+                        local d = godBossESP[m]
+                        if d and d.txt and d.adorn and myHrp then
+                            local dist = (d.adorn.Position - myHrp.Position).Magnitude
+                            d.txt.Text = string.format("%s [%d]", m.Name, math.floor(dist))
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Tribe Totem ESP
+local tribeTotemESP = {}
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        if not S.TribeTotemESPEnabled then
+            for m, d in pairs(tribeTotemESP) do
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                tribeTotemESP[m] = nil
+            end
+            continue
+        end
+        local myHrp = getHRP(); if not myHrp then continue end
+        local folder = workspace:FindFirstChild("Totems")
+        if not folder then continue end
+        local active = {}
+        for _, item in ipairs(folder:GetChildren()) do
+            local tco = item:FindFirstChild("TribeColor")
+            if tco then
+                active[item] = true
+                local colorName = tostring(tco.Value)
+                local col = TribeColors[colorName] or Color3.fromRGB(255,255,255)
+                if not tribeTotemESP[item] then
+                    local adorn = item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")) or item
+                    if adorn then
+                        local hl = Instance.new("Highlight", item)
+                        hl.FillColor = col; hl.OutlineColor = col
+                        hl.FillTransparency = 0.5; hl.Adornee = item
+                        local bg = Instance.new("BillboardGui", item)
+                        bg.Adornee = adorn
+                        bg.Size = UDim2.new(0, 200, 0, 30)
+                        bg.StudsOffset = Vector3.new(0, 5, 0)
+                        bg.AlwaysOnTop = true
+                        local txt = Instance.new("TextLabel", bg)
+                        txt.BackgroundTransparency = 1
+                        txt.Size = UDim2.new(1, 0, 1, 0)
+                        txt.TextColor3 = col
+                        txt.Font = Enum.Font.GothamBold
+                        txt.TextSize = 12
+                        tribeTotemESP[item] = { hl = hl, bg = bg, txt = txt, adorn = adorn, colorName = colorName }
+                    end
+                end
+                local d = tribeTotemESP[item]
+                if d and d.txt and d.adorn then
+                    local dist = (d.adorn.Position - myHrp.Position).Magnitude
+                    d.txt.Text = string.format("[%s] Totem [%d]", colorName, math.floor(dist))
+                end
+            end
+        end
+        for m, d in pairs(tribeTotemESP) do
+            if not active[m] or not m.Parent then
+                if d.hl then d.hl:Destroy() end
+                if d.bg then d.bg:Destroy() end
+                tribeTotemESP[m] = nil
+            end
+        end
+    end
+end)
+
+-- =========================================================
+--  Plant / Harvest / Cache Farm
+-- =========================================================
+local plantActive = false
+local function getPlantBoxesCached()
+    local dep = workspace:FindFirstChild("Deployables")
+    if not dep then return {} end
+    local out = {}
+    for _, m in ipairs(dep:GetChildren()) do
+        if m:IsA("Model") and m.Name == "Plant Box" then table.insert(out, m) end
+    end
+    return out
+end
+
+local function hasSeed(model)
+    return model:FindFirstChild("Seed") ~= nil
+end
+
+local function startPlantLoop()
+    if plantActive then return end
+    plantActive = true
+    task.spawn(function()
+        while S.PlantEnabled or S.CachePlantBoxes or S.CacheWalk do
+            pcall(function()
+                local hrp = getHRP(); if not hrp then return end
+                local range = S.PlantRange or 20
+                local rSq = range * range
+                local boxes = getPlantBoxesCached()
+                local empties = {}
+                for _, m in ipairs(boxes) do
+                    if not hasSeed(m) then
+                        local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                        if pp then
+                            local d = (pp.Position - hrp.Position).Magnitude
+                            if d <= range then table.insert(empties, { model = m, part = pp, dist = d }) end
+                        end
+                    end
+                end
+                table.sort(empties, function(a, b) return a.dist < b.dist end)
+                if S.PlantEnabled then
+                    local fruits = {}
+                    for k, v in pairs(S.PlantFruit) do
+                        if v then table.insert(fruits, k) end
+                    end
+                    if #fruits == 0 then fruits = { "Bloodfruit" } end
+                    local fruit = fruits[1]
+                    local itemID = autoDiscoverItemID(fruit .. " Seed") or autoDiscoverItemID(fruit)
+                    if itemID then
+                        for i = 1, math.min(#empties, 8) do
+                            local eid = readEntityId(empties[i].model)
+                            if eid then fireInteractStructure(eid, itemID) end
+                        end
+                    end
+                end
+            end)
+            task.wait(S.PlantDelay or 0.05)
+        end
+        plantActive = false
+    end)
+end
+
+local harvestActive = false
+local function startHarvestLoop()
+    if harvestActive then return end
+    harvestActive = true
+    task.spawn(function()
+        while S.HarvestEnabled do
+            pcall(function()
+                local hrp = getHRP(); if not hrp then return end
+                local crops = workspace:FindFirstChild("Crops"); if not crops then return end
+                local range = S.HarvestRange or 30
+                local rSq = range * range
+                local attempted = {}
+                for _, m in ipairs(crops:GetDescendants()) do
+                    if m:IsA("Model") then
+                        local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                        if pp and (pp.Position - hrp.Position).Magnitude ^ 2 <= rSq then
+                            local eid = readEntityId(m)
+                            if eid and not attempted[eid] then
+                                attempted[eid] = true
+                                firePickup(eid)
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.1)
+        end
+        harvestActive = false
+    end)
+end
+
+-- =========================================================
+--  Tank-plant box grid preview
+-- =========================================================
+local previewFolder = workspace:FindFirstChild("CrystallizedPreview")
+if not previewFolder then
+    previewFolder = Instance.new("Folder")
+    previewFolder.Name = "CrystallizedPreview"
+    previewFolder.Parent = workspace
+end
+
+local function updatePlantPreview()
+    previewFolder:ClearAllChildren()
+    if not S.ShowPlantBoxPreview then return end
+    local hrp = getHRP(); if not hrp then return end
+    local spacing = S.PlantBoxSpacingX or 5.1
+    local rot = CFrame.Angles(0, math.rad(S.PlantBoxRotation or 0), 0)
+    local baseX = math.floor(hrp.Position.X / spacing + 0.5) * spacing
+    local baseZ = math.floor(hrp.Position.Z / spacing + 0.5) * spacing
+    for r = -2, 2 do
+        for c = -2, 2 do
+            local x = baseX + c * spacing
+            local z = baseZ + r * spacing
+            local p = Instance.new("Part", previewFolder)
+            p.Size = Vector3.new(4, 0.5, 4)
+            p.Position = Vector3.new(x, hrp.Position.Y - 3, z)
+            p.CFrame = CFrame.new(p.Position) * rot
+            p.Anchored = true
+            p.CanCollide = false
+            p.Material = Enum.Material.Neon
+            p.Color = Color3.fromRGB(0, 255, 100)
+            p.Transparency = 0.7
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if S.ShowPlantBoxPreview then pcall(updatePlantPreview) end
+    end
+end)
+
+-- =========================================================
+--  Noclip loop
+-- =========================================================
+RunService.Heartbeat:Connect(function()
+    if S.NoclipEnabled then noclipChar() end
+end)
+
+-- =========================================================
+--  Wall Climber (bound via UI)
+-- =========================================================
+local wallConn
+local function applyWallClimber(s)
+    S.WallClimberEnabled = s
+    if wallConn then wallConn:Disconnect() wallConn = nil end
+    if s then
+        wallConn = RunService.Stepped:Connect(function()
+            local c = plr.Character
+            local r = c and c:FindFirstChild("HumanoidRootPart")
+            local h = c and c:FindFirstChildOfClass("Humanoid")
+            if not r or not h then return end
+            local params = RaycastParams.new()
+            params.FilterDescendantsInstances = { c }
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            local res = workspace:Raycast(r.Position, r.CFrame.LookVector * 2.5, params)
+            if res and h.MoveDirection.Magnitude > 0 then
+                r.Velocity = Vector3.new(r.Velocity.X, 50, r.Velocity.Z)
+            end
+        end)
+    end
+end
+
+-- =========================================================
+--  Voodoo (target = pinch target)
+-- =========================================================
+local function fireVoodooOnTarget()
+    local myR = getBoogaHRP(plr); if not myR then return end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isTargetablePlayer(p) then
+            local hrp = getBoogaHRP(p)
+            if hrp then
+                fireVoodoo(hrp.Position, myR.Position)
+            end
+        end
+    end
+end
+
+-- =========================================================
+--  Quick Shop
+-- =========================================================
+local shopItemList = { "Adurite","Bloodfruit","Crystal Chunk","Gold","Iron","Steel","Wood","Leaves","Bluefruit","Jelly","Log","Ice Cube","Berry","Fire Hide","Hide","Stone","Obsidian","Cooked Meat","Lemon","Emerald" }
+table.sort(shopItemList)
+
+-- =========================================================
+--  UI construction
+-- =========================================================
+
+-- ========== Main tab ==========
+local MainTab = Window:CreateTab("Main", 4483362458)
+local pingLabel = MainTab:CreateLabel("Ping: ...")
+task.spawn(function()
+    local Network = Stats:WaitForChild("Network", 15)
+    if not Network then return end
+    while true do
+        local ok, ping = pcall(function()
+            return Network.ServerStatsItem["Data Ping"]:GetValueString()
+        end)
+        if ok then pingLabel:Set("Ping: " .. ping) end
+        task.wait(0.5)
+    end
+end)
+
+MainTab:CreateSection("Movement")
+MainTab:CreateToggle({ Name = "Walkspeed Override", CurrentValue = false, Callback = function(s) S.WalkSpeedEnabled = s end })
+MainTab:CreateSlider({ Name = "WalkSpeed", Range = {16, 21}, Increment = 1, CurrentValue = 16, Callback = function(v) S.WalkSpeed = v end })
+RunService.RenderStepped:Connect(function()
+    if not S.WalkSpeedEnabled then return end
+    local h = getHum(); if h then h.WalkSpeed = S.WalkSpeed end
+end)
+
+MainTab:CreateToggle({ Name = "HipHeight", CurrentValue = false, Callback = function(s)
+    local h = getHum()
+    if not s and h then h.HipHeight = 2 end
+end })
+MainTab:CreateSlider({ Name = "Hip Height", Range = {2, 6.9}, Increment = 0.1, CurrentValue = 2, Callback = function(v) S.HipHeight = v end })
+RunService.RenderStepped:Connect(function()
+    if not S.HipHeightEnabled then return end
+    local h = getHum(); if h then h.HipHeight = S.HipHeight end
+end)
+
+MainTab:CreateToggle({ Name = "No Mountain Slip", CurrentValue = false, Callback = function(s)
+    S.MaxSlopeEnabled = s
+    local h = getHum()
+    if h then h.MaxSlopeAngle = s and 89 or 46 end
+end })
+
+MainTab:CreateToggle({ Name = "Noclip", CurrentValue = false, Callback = function(s) S.NoclipEnabled = s end })
+MainTab:CreateToggle({ Name = "Wall Climber", CurrentValue = false, Callback = applyWallClimber })
+
+MainTab:CreateSection("Server Teleports")
+MainTab:CreateButton({ Name = "Void Servers", Callback = function() TeleportService:Teleport(11879754496, plr) end })
+MainTab:CreateButton({ Name = "Overworld Servers", Callback = function() TeleportService:Teleport(11729688377, plr) end })
+MainTab:CreateButton({ Name = "Rejoin Server", Callback = function() TeleportService:Teleport(game.PlaceId, plr) end })
+
+-- ========== Fighting tab ==========
+local FightingTab = Window:CreateTab("Fighting", 4483362458)
+
+FightingTab:CreateSection("Auto Heal (SmartHeal)")
+FightingTab:CreateToggle({ Name = "Auto Heal", CurrentValue = false, Callback = function(s)
+    S.AutoHealEnabled = s
+    if s then startAutoHealLoop() end
+end })
+FightingTab:CreateToggle({ Name = "CMethod / SmartHeal", CurrentValue = false, Callback = function(s)
+    S.SmartHealEnabled = s
+    smartBursting = false; smartCycleStart = 0
+    healRecentHitTimes = {}
+    if s then bindSmartHealHealthWatch(plr.Character) end
+end })
+FightingTab:CreateDropdown({
+    Name = "Heal Type",
+    Options = { "AutoHeal", "SwingHeal AnimationOnly" },
+    CurrentOption = { "AutoHeal" },
+    Callback = function(v) if v and v[1] then S.AutoHealType = v[1] end end
+})
+FightingTab:CreateDropdown({
+    Name = "Heal Fruit",
+    Options = { "Bloodfruit","Bluefruit","Lemon","Coconut","Jelly","Banana","Orange","Oddberry","Berry","Strangefruit","Strawberry","Sunfruit","Pumpkin","Prickly Pear","Apple","Barley","Cloudberry","Carrot","Corn","Blossom","Watermelon","Mango","Frostfruit" },
+    CurrentOption = { "Bloodfruit" },
+    Callback = function(v) if v and v[1] then S.HealFruit = v[1] end end
+})
+FightingTab:CreateSlider({ Name = "Max Heal CPS", Range = {1, 500}, Increment = 1, CurrentValue = 120, Callback = function(v) S.HealCPS = v end })
+FightingTab:CreateSlider({ Name = "Heal Threshold %", Range = {1, 99}, Increment = 1, CurrentValue = 70, Callback = function(v) S.HealThreshold = v end })
+
+FightingTab:CreateToggle({ Name = "Auto Eat", CurrentValue = false, Callback = function(s)
+    S.AutoEatEnabled = s
+    if s then task.spawn(function()
+        while S.AutoEatEnabled do
+            pcall(function()
+                local mainGui = plr.PlayerGui:FindFirstChild("MainGui")
+                local bars = mainGui and mainGui:FindFirstChild("Panels") and mainGui.Panels:FindFirstChild("Stats") and mainGui.Panels.Stats:FindFirstChild("Bars")
+                local label = bars and bars:FindFirstChild("Hunger") and bars.Hunger:FindFirstChild("ValueLabel")
+                local val = label and tonumber(label.Text) or 100
+                if val <= (S.EatThreshold or 70) then
+                    fireUseBagItemSlotByName(S.EatFruit or "Bloodfruit")
+                    task.wait(0.15)
+                else
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end) end
+end })
+
+FightingTab:CreateSection("Auto Hit / Reach")
+FightingTab:CreateDropdown({
+    Name = "AutoHit Mode",
+    Options = { "SwingHit", "NoSwingHit" },
+    CurrentOption = { "SwingHit" },
+    Callback = function(v) if v and v[1] then S.AutoHitSelection = v[1] end end
+})
+FightingTab:CreateToggle({ Name = "AutoHit", CurrentValue = false, Callback = function(s)
+    S.AutoHitStartEnabled = s
+    if s then startAutoHitLoop() end
+end })
+FightingTab:CreateSlider({ Name = "AutoHit Cooldown", Range = {0.01, 0.5}, Increment = 0.01, CurrentValue = 0.05, Callback = function(v) S.AutoHitCooldown = v end })
+FightingTab:CreateSlider({ Name = "Target Count", Range = {1, 9}, Increment = 1, CurrentValue = 3, Callback = function(v) S.PlayerTargetCount = v end })
+FightingTab:CreateToggle({ Name = "Packed MultiHit", CurrentValue = true, Callback = function(s) S.PlayerSwingPacked = s end })
+
+FightingTab:CreateToggle({ Name = "Player Reach", CurrentValue = false, Callback = function(s)
+    S.PlayerReachEnabled = s
+    if not s then restoreReach() end
+end })
+FightingTab:CreateSlider({ Name = "Reach Range", Range = {1, 8}, Increment = 0.1, CurrentValue = 8, Callback = function(v) S.PlayerReachRange = v end })
+
+FightingTab:CreateSection("Face / Trace")
+FightingTab:CreateToggle({ Name = "Face Enemy", CurrentValue = false, Callback = function(s) S.FaceEnemyEnabled = s end })
+FightingTab:CreateToggle({ Name = "Auto Trace", CurrentValue = false, Callback = function(s) S.AutoTraceEnabled = s end })
+FightingTab:CreateSlider({ Name = "AutoTrace Health %", Range = {1, 100}, Increment = 1, CurrentValue = 10, Callback = function(v) S.AutoTraceHealth = v end })
+FightingTab:CreateSlider({ Name = "Trace Range", Range = {3, 30}, Increment = 1, CurrentValue = 8, Callback = function(v) S.TraceRange = v end })
+
+-- Face + Trace loops
+RunService.RenderStepped:Connect(function()
+    if not S.FaceEnemyEnabled then return end
+    local c = plr.Character
+    local r = c and c:FindFirstChild("HumanoidRootPart")
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    if not r or not h then return end
+    local best, bd = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isTargetablePlayer(p) then
+            local hrp = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local d = (hrp.Position - r.Position).Magnitude
+                if d < bd then bd = d best = hrp end
+            end
+        end
+    end
+    if best then
+        local look = Vector3.new(best.Position.X, r.Position.Y, best.Position.Z)
+        if (look - r.Position).Magnitude > 0.25 then
+            if S.AutoTraceEnabled then h.AutoRotate = true else h.AutoRotate = false end
+            r.CFrame = CFrame.lookAt(r.Position, look)
+        end
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not S.AutoTraceEnabled then return end
+    local c = plr.Character
+    local h = c and c:FindFirstChildOfClass("Humanoid")
+    local r = c and c:FindFirstChild("HumanoidRootPart")
+    if not h or not r then return end
+    local thresh = S.AutoTraceHealth or 10
+    local range = S.TraceRange or 8
+    local best, bd = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isTargetablePlayer(p) then
+            local hrp = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+            local ph = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+            if hrp and ph and ph.Health > 0 and ph.Health <= thresh + 0.05 then
+                local d = (hrp.Position - r.Position).Magnitude
+                if d <= range and d < bd then bd = d best = hrp end
+            end
+        end
+    end
+    if best then h:MoveTo(best.Position) else h:MoveTo(r.Position) end
+end)
+
+FightingTab:CreateSection("Silent Aim / Auto Shoot")
+FightingTab:CreateToggle({ Name = "Silent Aimbot", CurrentValue = false, Callback = function(s) S.SilentAimbot = s end })
+FightingTab:CreateDropdown({
+    Name = "Silent Aim Part",
+    Options = { "HumanoidRootPart", "Head", "UpperTorso", "LowerTorso" },
+    CurrentOption = { "HumanoidRootPart" },
+    Callback = function(v) if v and v[1] then S.SilentAimTargetPart = v[1] end end
+})
+FightingTab:CreateSlider({ Name = "Silent Aim Lead Mult", Range = {0, 3}, Increment = 0.1, CurrentValue = 1, Callback = function(v) S.SilentAimLeadMult = v end })
+FightingTab:CreateToggle({ Name = "Auto Shoot", CurrentValue = false, Callback = function(s) S.AutoShoot = s end })
+FightingTab:CreateToggle({ Name = "Auto Shoot Critter", CurrentValue = false, Callback = function(s) S.AutoShootCritter = s end })
+FightingTab:CreateToggle({ Name = "Show FOV Circle", CurrentValue = false, Callback = function(s) S.ShowFOVCircle = s end })
+FightingTab:CreateSlider({ Name = "FOV Radius", Range = {30, 800}, Increment = 5, CurrentValue = 120, Callback = function(v) S.HitboxFOVSize = v end })
+
+FightingTab:CreateToggle({ Name = "Expand Hitboxes", CurrentValue = false, Callback = function(s) S.HitboxEnabled = s end })
+FightingTab:CreateToggle({ Name = "Hitbox Bow Only", CurrentValue = false, Callback = function(s) S.HitboxBowOnly = s end })
+FightingTab:CreateToggle({ Name = "Show Hitbox Visual", CurrentValue = false, Callback = function(s) S.HitboxVisuals = s end })
+FightingTab:CreateSlider({ Name = "Hitbox Size", Range = {2, 15}, Increment = 1, CurrentValue = 7, Callback = function(v) S.HitboxSize = v end })
+
+FightingTab:CreateSection("Quick Hut / Voodoo")
+FightingTab:CreateButton({ Name = "Place Quick Hut on Player", Callback = executeQuickHut })
+FightingTab:CreateButton({ Name = "Fire Voodoo at Nearest Enemy", Callback = fireVoodooOnTarget })
+
+FightingTab:CreateSection("Auto Chest")
+FightingTab:CreateToggle({ Name = "AutoChest", CurrentValue = false, Callback = function(s) S.AutoChestEnabled = s end })
+FightingTab:CreateDropdown({
+    Name = "Chest Type",
+    Options = { "Chest", "Reinforced Chest" },
+    CurrentOption = { "Chest" },
+    Callback = function(v) if v and v[1] then S.AutoChestSelectedChest = v[1] end end
+})
+FightingTab:CreateSlider({ Name = "Fall Threshold", Range = {0.1, 5}, Increment = 0.1, CurrentValue = 0.6, Callback = function(v) S.AutoChestFallThreshold = v end })
+FightingTab:CreateSlider({ Name = "Prediction Time", Range = {0, 1}, Increment = 0.01, CurrentValue = 0.2, Callback = function(v) S.AutoChestPredictionTime = v end })
+FightingTab:CreateSlider({ Name = "Forward Offset", Range = {-10, 10}, Increment = 0.5, CurrentValue = 0, Callback = function(v) S.AutoChestForwardOffset = v end })
+FightingTab:CreateToggle({ Name = "Jump Landing Prediction", CurrentValue = false, Callback = function(s) S.AutoChestJumpPrediction = s end })
+
+FightingTab:CreateSection("Pinch")
+FightingTab:CreateToggle({ Name = "Pinch", CurrentValue = false, Callback = function(s) S.PinchEnabled = s end })
+FightingTab:CreateDropdown({
+    Name = "Pinch Item",
+    Options = { "Crystal Gate","Crystal Wall","Emerald Gate","Emerald Wall","Adurite Gate","Adurite Wall","Ice Gate","Ice Wall","Iron Gate","Iron Wall","Magnetite Gate","Magnetite Wall","Stone Gate","Stone Wall","Wood Gate","Wood Wall" },
+    CurrentOption = { "Crystal Gate" },
+    Callback = function(v) if v and v[1] then
+        S.PinchItemName = v[1]
+        -- Auto-apply presets
+        local gates = {
+            ["Crystal Gate"] = {1.60, 0, 0, -11.70},
+            ["Crystal Wall"] = {1.60, 0, 0, -11.70},
+            ["Ice Gate"] = {0, 1.90, -12.27, 0},
+            ["Wood Gate"] = {1.48, 12.8, 0, 0},
+        }
+        local g = gates[v[1]]
+        if g then S.PinchXOffset=g[1] S.PinchZOffset=g[2] S.PinchShiftX=g[3] S.PinchShiftZ=g[4] end
+    end end
+})
+FightingTab:CreateSlider({ Name = "Pinch X Offset", Range = {0, 30}, Increment = 0.01, CurrentValue = 1.6, Callback = function(v) S.PinchXOffset = v end })
+FightingTab:CreateSlider({ Name = "Pinch Z Offset", Range = {0, 30}, Increment = 0.01, CurrentValue = 0, Callback = function(v) S.PinchZOffset = v end })
+FightingTab:CreateSlider({ Name = "Pinch Shift X", Range = {-30, 30}, Increment = 0.01, CurrentValue = 0, Callback = function(v) S.PinchShiftX = v end })
+FightingTab:CreateSlider({ Name = "Pinch Shift Z", Range = {-30, 30}, Increment = 0.01, CurrentValue = -11.7, Callback = function(v) S.PinchShiftZ = v end })
+FightingTab:CreateSlider({ Name = "Ping Scale", Range = {0.25, 3}, Increment = 0.01, CurrentValue = 1, Callback = function(v) S.PinchPredictTime = v end })
+
+-- ========== Farming tab ==========
+local FarmTab = Window:CreateTab("Farming", 4483362458)
+
+FarmTab:CreateSection("Auras")
+FarmTab:CreateToggle({ Name = "Resource Aura", CurrentValue = false, Callback = function(s)
+    S.ResourceAuraEnabled = s
+    if s then startAuraLoop() end
+end })
+FarmTab:CreateToggle({ Name = "Structure Aura", CurrentValue = false, Callback = function(s)
+    S.StructureAuraEnabled = s
+    if s then startAuraLoop() end
+end })
+FarmTab:CreateToggle({ Name = "Critter Aura", CurrentValue = false, Callback = function(s)
+    S.CritterAuraEnabled = s
+    if s then startAuraLoop() end
+end })
+FarmTab:CreateInput({ Name = "Resource Filter", CurrentValue = "AllResource", Callback = function(v) S.ResourceType = v end })
+FarmTab:CreateInput({ Name = "Structure Filter", CurrentValue = "AllStructure", Callback = function(v) S.StructureType = v end })
+FarmTab:CreateInput({ Name = "Critter Filter", CurrentValue = "All", Callback = function(v) S.CritterType = v end })
+FarmTab:CreateSlider({ Name = "Aura Range", Range = {5, 50}, Increment = 1, CurrentValue = 15, Callback = function(v) S.ResourceRange = v; S.CritterRange = v end })
+FarmTab:CreateSlider({ Name = "Target Count", Range = {1, 9}, Increment = 1, CurrentValue = 3, Callback = function(v) S.TargetCount = v end })
+FarmTab:CreateSlider({ Name = "Aura Cooldown", Range = {0.01, 0.5}, Increment = 0.01, CurrentValue = 0.03, Callback = function(v) S.ResourceCooldown = v end })
+FarmTab:CreateToggle({ Name = "Legit Swing", CurrentValue = false, Callback = function(s) S.AuraLegitSwing = s end })
+
+FarmTab:CreateSection("Node Farm")
+FarmTab:CreateToggle({ Name = "Gold Node Aura", CurrentValue = false, Callback = function(s)
+    S.GoldNodeAuraEnabled = s
+    if s then startSimpleAura("GoldNodeAuraEnabled", "gold node") end
+end })
+FarmTab:CreateToggle({ Name = "Ice Aura (Break Ice)", CurrentValue = false, Callback = function(s)
+    S.IceAuraEnabled = s
+    if s then startSimpleAura("IceAuraEnabled", "ice") end
+end })
+
+FarmTab:CreateSection("Auto Plant / Harvest")
+FarmTab:CreateToggle({ Name = "Auto Plant", CurrentValue = false, Callback = function(s)
+    S.PlantEnabled = s
+    if s then startPlantLoop() end
+end })
+FarmTab:CreateMultiDropdown({
+    Name = "Plant Fruit",
+    Options = { "Frostfruit","Mango","Watermelon","Bloodfruit","Bluefruit","Lemon","Coconut","Jelly","Banana","Orange","Oddberry","Berry","Strangefruit","Strawberry","Sunfruit","Pumpkin","Prickly Pear","Apple","Barley","Cloudberry","Carrot","Corn","Blossom" },
+    CurrentOptions = { "Bloodfruit" },
+    Callback = function(v)
+        S.PlantFruit = {}
+        for _, f in ipairs(v) do S.PlantFruit[f] = true end
+    end
+})
+FarmTab:CreateSlider({ Name = "Plant Range", Range = {5, 50}, Increment = 1, CurrentValue = 20, Callback = function(v) S.PlantRange = v end })
+FarmTab:CreateSlider({ Name = "Plant Delay", Range = {0.01, 1}, Increment = 0.01, CurrentValue = 0.05, Callback = function(v) S.PlantDelay = v end })
+FarmTab:CreateToggle({ Name = "Auto Harvest", CurrentValue = false, Callback = function(s)
+    S.HarvestEnabled = s
+    if s then startHarvestLoop() end
+end })
+FarmTab:CreateSlider({ Name = "Harvest Range", Range = {5, 100}, Increment = 1, CurrentValue = 30, Callback = function(v) S.HarvestRange = v end })
+
+FarmTab:CreateSection("Cache Farming")
+FarmTab:CreateToggle({ Name = "Cache Plant Boxes", CurrentValue = false, Callback = function(s)
+    S.CachePlantBoxes = s
+    if s then startPlantLoop() end
+end })
+FarmTab:CreateToggle({ Name = "Cache Walk", CurrentValue = false, Callback = function(s)
+    S.CacheWalk = s
+    if s then startPlantLoop() end
+end })
+FarmTab:CreateSlider({ Name = "Cache Amount", Range = {1, 50}, Increment = 1, CurrentValue = 20, Callback = function(v) S.CacheAmount = v end })
+FarmTab:CreateSlider({ Name = "Cache Timer", Range = {1, 10}, Increment = 1, CurrentValue = 3, Callback = function(v) S.CacheTimer = v end })
+
+FarmTab:CreateSection("Gold Farm Circuit")
+FarmTab:CreateToggle({ Name = "Start Tween", CurrentValue = false, Callback = function(s)
+    S.GoldCircuitEnabled = s
+    if s then startGoldCircuit() else stopGoldCircuit() end
+end })
+FarmTab:CreateSlider({ Name = "Tween Speed", Range = {1, 21}, Increment = 1, CurrentValue = 18, Callback = function(v) S.GoldSpeed = v end })
+FarmTab:CreateSlider({ Name = "Gold Delay (at nodes)", Range = {0, 2}, Increment = 0.05, CurrentValue = 0.25, Callback = function(v) S.GoldDelay = v end })
+FarmTab:CreateToggle({ Name = "Visual Waypoints", CurrentValue = false, Callback = function(s)
+    S.GoldVisual = s
+    updateVisualNodes()
+end })
+FarmTab:CreateToggle({ Name = "Tween Only (Recommended)", CurrentValue = true, Callback = function(s) S.TweenOnly = s end })
+FarmTab:CreateToggle({ Name = "Noclip During Farm", CurrentValue = false, Callback = function(s) S.GoldNoclip = s end })
+FarmTab:CreateToggle({ Name = "Auto Tool Equip", CurrentValue = false, Callback = function(s) S.GoldAutoEquip = s end })
+FarmTab:CreateDropdown({
+    Name = "Hoe Type",
+    Options = { "Wood Hoe","God Hoe","Crystal Hoe" },
+    CurrentOption = { "Wood Hoe" },
+    Callback = function(v) if v and v[1] then S.GoldHoeType = v[1] end end
+})
+
+FarmTab:CreateInput({ Name = "Input Path (JSON or triples)", CurrentValue = "", Callback = function(v)
+    if v == "" then return end
+    local positions
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(v) end)
+    if ok and type(decoded) == "table" then
+        if type(decoded.positions) == "table" then positions = decoded.positions
+        elseif decoded[1] then positions = decoded end
+    end
+    if not positions then
+        local nums = {}
+        for n in v:gmatch("[-%d%.]+") do
+            local num = tonumber(n)
+            if num then table.insert(nums, num) end
+        end
+        if #nums >= 3 then
+            positions = {}
+            for i = 1, #nums - 2, 3 do
+                table.insert(positions, { X = nums[i], Y = nums[i+1], Z = nums[i+2] })
+            end
+        end
+    end
+    if positions then
+        S.RecordedPositions = positions
+        updateVisualNodes()
+    end
+end })
+
+FarmTab:CreateToggle({ Name = "Auto Record Path", CurrentValue = false, Callback = function(s)
+    S.RecordingPath = s
+    if s then task.spawn(function()
+        while S.RecordingPath do
+            local hrp = getHRP()
+            if hrp then
+                local last = S.RecordedPositions[#S.RecordedPositions]
+                local add = true
+                if last then
+                    local dist = (Vector3.new(last.X or last.x, last.Y or last.y, last.Z or last.z) - hrp.Position).Magnitude
+                    if dist < 2 then add = false end
+                end
+                if add then
+                    table.insert(S.RecordedPositions, { X = hrp.Position.X, Y = hrp.Position.Y, Z = hrp.Position.Z })
+                    updateVisualNodes()
+                end
+            end
+            task.wait(S.RecordInterval or 1)
+        end
+    end) end
+end })
+FarmTab:CreateSlider({ Name = "Record Interval", Range = {0.1, 5}, Increment = 0.1, CurrentValue = 1, Callback = function(v) S.RecordInterval = v end })
+FarmTab:CreateButton({ Name = "Clear Path", Callback = function()
+    S.RecordedPositions = {}
+    updateVisualNodes()
+end })
+FarmTab:CreateButton({ Name = "Save Path to File", Callback = function()
+    local name = "Crystallized_" .. os.date("%Y%m%d_%H%M%S")
+    local data = HttpService:JSONEncode({ positions = S.RecordedPositions })
+    if writefile then
+        if not isfolder("CrystallizedPaths") then makefolder("CrystallizedPaths") end
+        writefile("CrystallizedPaths/" .. name .. ".json", data)
+        Rayfield:Notify({ Title = "Saved", Content = name, Duration = 3 })
+    end
+end })
+
+FarmTab:CreateSection("Plant Box Preview")
+FarmTab:CreateToggle({ Name = "Preview Placement", CurrentValue = false, Callback = function(s) S.ShowPlantBoxPreview = s end })
+FarmTab:CreateSlider({ Name = "Plant Box Rotation", Range = {0, 360}, Increment = 1, CurrentValue = 0, Callback = function(v) S.PlantBoxRotation = v end })
+FarmTab:CreateSlider({ Name = "Spacing X", Range = {1, 20}, Increment = 0.1, CurrentValue = 5.1, Callback = function(v) S.PlantBoxSpacingX = v end })
+FarmTab:CreateSlider({ Name = "Spacing Z", Range = {1, 20}, Increment = 0.1, CurrentValue = 5.1, Callback = function(v) S.PlantBoxSpacingZ = v end })
+
+-- ========== Pickup / Drop tab ==========
+local PickupTab = Window:CreateTab("Pickup", 4483362458)
+
+PickupTab:CreateSection("Auto Pickup")
+PickupTab:CreateToggle({ Name = "Auto Pickup Items", CurrentValue = false, Callback = function(s)
+    S.AutoPickupEnabled = s
+    if s then
+        task.spawn(function()
+            while S.AutoPickupEnabled do
+                pcall(function()
+                    local r = getHRP(); if not r then return end
+                    local folder = workspace:FindFirstChild("Items") or workspace:FindFirstChild("DroppedItems")
+                    if not folder then return end
+                    local rangeSq = (S.PickupRange or 50) ^ 2
+                    local batch = S.PickupBatchSize or 150
+                    local candidates = {}
+                    for _, item in ipairs(folder:GetChildren()) do
+                        if #candidates >= batch then break end
+                        local eid = readEntityId(item)
+                        if eid then
+                            local pp = item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")) or item
+                            if pp then
+                                local dSq = (pp.Position - r.Position).Magnitude ^ 2
+                                if dSq <= rangeSq then table.insert(candidates, { eid = eid, dSq = dSq }) end
+                            end
+                        end
+                    end
+                    table.sort(candidates, function(a, b) return a.dSq < b.dSq end)
+                    for _, c in ipairs(candidates) do
+                        if not S.AutoPickupEnabled then break end
+                        firePickup(c.eid)
+                        task.wait(S.PickupDelay or 0.01)
+                    end
+                end)
+                task.wait(0.05)
+            end
+        end)
+    end
+end })
+PickupTab:CreateToggle({ Name = "Auto Pickup Chests", CurrentValue = false, Callback = function(s)
+    S.ChestPickupEnabled = s
+    if s then
+        task.spawn(function()
+            while S.ChestPickupEnabled do
+                pcall(function()
+                    local dep = workspace:FindFirstChild("Deployables")
+                    if not dep then return end
+                    local r = getHRP(); if not r then return end
+                    for _, chest in ipairs(dep:GetChildren()) do
+                        if (chest.Name:find("Chest") or chest.Name:find("Box")) and not chest.Name:find("Plant Box") then
+                            local contents = chest:FindFirstChild("Contents")
+                            if contents then
+                                for _, item in ipairs(contents:GetChildren()) do
+                                    local eid = readEntityId(item)
+                                    if eid then firePickup(eid) end
+                                end
+                            end
+                        end
+                    end
+                end)
+                task.wait(0.3)
+            end
+        end)
+    end
+end })
+PickupTab:CreateSlider({ Name = "Pickup Range", Range = {5, 200}, Increment = 1, CurrentValue = 50, Callback = function(v) S.PickupRange = v end })
+PickupTab:CreateSlider({ Name = "Batch Size", Range = {1, 500}, Increment = 1, CurrentValue = 150, Callback = function(v) S.PickupBatchSize = v end })
+PickupTab:CreateSlider({ Name = "Per-Item Delay", Range = {0, 0.1}, Increment = 0.005, CurrentValue = 0.01, Callback = function(v) S.PickupDelay = v end })
+
+PickupTab:CreateSection("Auto Drop")
+PickupTab:CreateToggle({ Name = "Auto Drop", CurrentValue = false, Callback = function(s) S.AutoDropEnabled = s end })
+PickupTab:CreateInput({ Name = "Items to Drop (comma-separated)", CurrentValue = "", Callback = function(v) S.DropItem = v end })
+PickupTab:CreateInput({ Name = "Drop Amount (Infinite or N)", CurrentValue = "Infinite", Callback = function(v)
+    local n = tonumber(v)
+    S.DropAmount = (n and n > 0) and math.floor(n) or "Infinite"
+end })
+
+PickupTab:CreateSection("Item Deletion")
+PickupTab:CreateToggle({ Name = "Enable Item Deletion", CurrentValue = false, Callback = function(s) S.ItemDeletionEnabled = s end })
+PickupTab:CreateInput({ Name = "Delete Filter (comma-separated)", CurrentValue = "", Callback = function(v) S.ItemDeletion = v end })
+
+-- ========== Automation tab ==========
+local AutoTab = Window:CreateTab("Automation", 4483362458)
+
+AutoTab:CreateSection("Fish / Saddle / Fuel")
+AutoTab:CreateToggle({ Name = "Auto Fish", CurrentValue = false, Callback = function(s)
+    S.AutoFishEnabled = s
+    if s then
+        task.spawn(function()
+            while S.AutoFishEnabled do
+                pcall(function()
+                    local r = getHRP(); if not r then return end
+                    if not isToolEquipped("Fishing Rod") then
+                        equipItem("Fishing Rod")
+                        task.wait(0.5)
+                    end
+                    local castID = getPacketId("RodSwing")
+                    if castID and ByteNetReliable then
+                        local dist = S.FishDistance or 50
+                        local origin = r.Position
+                        local target = origin + r.CFrame.LookVector * (dist * 100) - Vector3.new(0, 1000, 0)
+                        local b = buffer.create(26)
+                        buffer.writeu8(b, 0, 0)
+                        buffer.writeu8(b, 1, castID)
+                        buffer.writef32(b, 2, target.X)
+                        buffer.writef32(b, 6, target.Y)
+                        buffer.writef32(b, 10, target.Z)
+                        buffer.writef32(b, 14, origin.X)
+                        buffer.writef32(b, 18, origin.Y)
+                        buffer.writef32(b, 22, origin.Z)
+                        ByteNetReliable:FireServer(b)
+                    end
+                    local startT = tick()
+                    local reeled = false
+                    while S.AutoFishEnabled and not reeled and tick() - startT < 30 do
+                        pcall(function()
+                            local pf = workspace:FindFirstChild("Players")
+                            local c2 = pf and pf:FindFirstChild(plr.Name)
+                            local tf = c2 and c2:FindFirstChild("Tools")
+                            local rod = tf and tf:FindFirstChild("Fishing Rod")
+                            local bob = rod and rod:FindFirstChild("Bobber")
+                            local em = bob and bob:FindFirstChild("ParticleEmitter")
+                            if em and em.Enabled then reeled = true end
+                        end)
+                        task.wait(0.05)
+                    end
+                    if reeled then
+                        local reelID = getPacketId("RodEnd")
+                        if reelID and ByteNetReliable then
+                            local b = buffer.create(2)
+                            buffer.writeu8(b, 0, 0)
+                            buffer.writeu8(b, 1, reelID)
+                            ByteNetReliable:FireServer(b)
+                        end
+                        task.wait(1.5)
+                    end
+                end)
+            end
+        end)
+    end
+end })
+AutoTab:CreateSlider({ Name = "Fish Distance", Range = {10, 100}, Increment = 1, CurrentValue = 50, Callback = function(v) S.FishDistance = v end })
+
+AutoTab:CreateToggle({ Name = "Auto Saddle", CurrentValue = false, Callback = function(s)
+    S.AutoSaddleEnabled = s
+    if s then
+        task.spawn(function()
+            while S.AutoSaddleEnabled do
+                pcall(function()
+                    local r = getHRP(); if not r then return end
+                    local folder = workspace:FindFirstChild("Critters"); if not folder then return end
+                    local best, bd, bestSaddle = nil, 80, nil
+                    for _, m in ipairs(folder:GetChildren()) do
+                        if m:IsA("Model") then
+                            local pp = m.PrimaryPart or m:FindFirstChildWhichIsA("BasePart")
+                            if pp then
+                                local d = (pp.Position - r.Position).Magnitude
+                                if d < bd then
+                                    local eid = readEntityId(m)
+                                    if eid then
+                                        bd = d
+                                        best = eid
+                                        local name = m.Name:lower()
+                                        if name:find("mammoth", 1, true) or name:find("giant shelly", 1, true) then
+                                            bestSaddle = "Big Saddle"
+                                        else
+                                            bestSaddle = "Saddle"
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if best and bestSaddle then
+                        if not isToolEquipped(bestSaddle) then equipItem(bestSaddle) task.wait(0.35) end
+                        fireTargetTool(best)
+                    end
+                end)
+                task.wait(0.5)
+            end
+        end)
+    end
+end })
+
+AutoTab:CreateToggle({ Name = "Auto Fuel Campfire", CurrentValue = false, Callback = function(s)
+    S.AutoFuelEnabled = s
+    if s then
+        task.spawn(function()
+            while S.AutoFuelEnabled do
+                pcall(function()
+                    local r = getHRP(); if not r then return end
+                    local ids = {}
+                    if S.FuelType == "All (Wood/Log/Leaves)" then
+                        for _, f in ipairs({ "Wood", "Log", "Leaves" }) do
+                            local id = autoDiscoverItemID(f)
+                            if id then table.insert(ids, id) end
+                        end
+                    else
+                        local id = autoDiscoverItemID(S.FuelType)
+                        if id then table.insert(ids, id) end
+                    end
+                    if #ids == 0 then return end
+                    local dep = workspace:FindFirstChild("Deployables"); if not dep then return end
+                    for _, camp in ipairs(dep:GetChildren()) do
+                        if camp.Name == "Campfire" then
+                            local board = camp:FindFirstChild("Board")
+                            local label = board and board:FindFirstChild("Billboard") and board.Billboard:FindFirstChild("Backdrop") and board.Billboard.Backdrop:FindFirstChild("TextLabel")
+                            local fuel = label and tonumber(label.Text) or 0
+                            if fuel < (S.FuelThreshold or 200) then
+                                local pos = board and board.Position or camp:GetPivot().Position
+                                if (pos - r.Position).Magnitude <= 35 then
+                                    local eid = readEntityId(camp)
+                                    if eid then fireInteractStructure(eid, ids[1]) task.wait(0.1) end
+                                end
+                            end
+                        end
+                    end
+                end)
+                task.wait(0.5)
+            end
+        end)
+    end
+end })
+AutoTab:CreateDropdown({
+    Name = "Fuel Type",
+    Options = { "All (Wood/Log/Leaves)", "Wood", "Log", "Leaves", "Coal" },
+    CurrentOption = { "All (Wood/Log/Leaves)" },
+    Callback = function(v) if v and v[1] then S.FuelType = v[1] end end
+})
+AutoTab:CreateSlider({ Name = "Fuel Threshold", Range = {0, 250}, Increment = 1, CurrentValue = 200, Callback = function(v) S.FuelThreshold = v end })
+
+AutoTab:CreateSection("Coin Presser")
+AutoTab:CreateToggle({ Name = "Coin Presser", CurrentValue = false, Callback = function(s) S.CoinPresserEnabled = s end })
+AutoTab:CreateToggle({ Name = "Multi Coin Presser", CurrentValue = false, Callback = function(s) S.MultiCoinPresserEnabled = s end })
+
+AutoTab:CreateSection("Crafting")
+AutoTab:CreateToggle({ Name = "Auto Craft", CurrentValue = false, Callback = function(s) S.AutoCraftEnabled = s end })
+AutoTab:CreateInput({ Name = "Craft Item Name", CurrentValue = "", Callback = function(v)
+    S.CraftItemName = v
+    S.CraftItemID = autoDiscoverItemID(v)
+end })
+AutoTab:CreateSlider({ Name = "Craft Delay", Range = {0.1, 2}, Increment = 0.05, CurrentValue = 0.5, Callback = function(v) S.CraftDelay = v end })
+
+AutoTab:CreateSection("Auto Shop Buy")
+AutoTab:CreateDropdown({
+    Name = "Item to Buy",
+    Options = shopItemList,
+    CurrentOption = { "Adurite" },
+    Callback = function(v) if v and v[1] then S.BuyItemName = v[1] end end
+})
+AutoTab:CreateInput({ Name = "Buy Amount", CurrentValue = "1", Callback = function(v) S.BuyAmount = tonumber(v) or 1 end })
+AutoTab:CreateButton({ Name = "Buy Now", Callback = doQuickBuy })
+
+AutoTab:CreateSection("Auto Potion")
+AutoTab:CreateDropdown({
+    Name = "Potion",
+    Options = { "Fire Resistance Potion","Harming Potion","Haste Potion","Healing Potion","Ice Potion","Poison Potion","Splash Fire Resistance Potion","Splash Harming Potion","Splash Haste Potion","Splash Healing Potion","Splash Ice Potion","Splash Poison Potion","Splash Strength Potion","Splash Swiftness Potion","Splash Weakness Potion","Strength Potion","Swiftness Potion","Weakness Potion" },
+    CurrentOption = { "Swiftness Potion" },
+    Callback = function(v) if v and v[1] then S.SelectedPotion = v[1] end end
+})
+AutoTab:CreateToggle({ Name = "Auto Craft Potion", CurrentValue = false, Callback = function(s) S.AutoCraftPotion = s end })
+AutoTab:CreateSlider({ Name = "Potion Delay", Range = {0.1, 2}, Increment = 0.1, CurrentValue = 0.5, Callback = function(v) S.PotionCraftDelay = v end })
+AutoTab:CreateSlider({ Name = "Potion Range", Range = {5, 40}, Increment = 1, CurrentValue = 15, Callback = function(v) S.PotionRange = v end })
+
+AutoTab:CreateSection("Rebirth / Respawn")
+AutoTab:CreateToggle({ Name = "Auto Rebirth", CurrentValue = false, Callback = function(s) S.AutoRebirthEnabled = s end })
+AutoTab:CreateInput({ Name = "Rebirth Level", CurrentValue = "101", Callback = function(v) S.RebirthLevel = tonumber(v) or 101 end })
+AutoTab:CreateToggle({ Name = "Auto Bed Respawn", CurrentValue = false, Callback = function(s) S.AutoRespawnEnabled = s end })
+
+AutoTab:CreateSection("Behind Queen Ant")
+AutoTab:CreateToggle({ Name = "Behind Queen Ant", CurrentValue = false, Callback = function(s)
+    S.BehindQueenAnt = s
+    if s then startBehindQueenFollow() end
+end })
+AutoTab:CreateSlider({ Name = "Distance From Queen", Range = {0, 10}, Increment = 0.1, CurrentValue = 3, Callback = function(v) S.BehindQueenAntStuds = v end })
+
+AutoTab:CreateSection("Crystal Guardian Farm")
+AutoTab:CreateToggle({ Name = "Crystal Guardian Farm", CurrentValue = false, Callback = function(s)
+    S.CrystalGuardianFarm = s
+    if s then startCrystalGuardianFarm() end
+end })
+AutoTab:CreateSlider({ Name = "Guardian Speed", Range = {1, 21}, Increment = 1, CurrentValue = 17, Callback = function(v) S.CrystalGuardianSpeed = v end })
+
+AutoTab:CreateSection("Auto Sand Farm")
+AutoTab:CreateToggle({ Name = "Auto Sand Farm", CurrentValue = false, Callback = function(s)
+    S.AutoSandEnabled = s
+    if s then startAutoSand() end
+end })
+AutoTab:CreateSlider({ Name = "Sand Farm Speed", Range = {0.2, 1}, Increment = 0.1, CurrentValue = 0.4, Callback = function(v) S.SandFarmSpeed = v end })
+AutoTab:CreateSlider({ Name = "Sand Amount", Range = {1, 40}, Increment = 1, CurrentValue = 1, Callback = function(v) S.SandAmount = v end })
+
+-- ========== ESP tab ==========
+local EspTab = Window:CreateTab("ESP", 4483362458)
+
+EspTab:CreateSection("Player ESP")
+EspTab:CreateToggle({ Name = "Player ESP", CurrentValue = false, Callback = function(s) S.PlayerESPEnabled = s end })
+EspTab:CreateToggle({ Name = "Hide Teammates", CurrentValue = false, Callback = function(s) S.HideTeams = s end })
+
+EspTab:CreateSection("Critter ESP")
+EspTab:CreateMultiDropdown({
+    Name = "Select Critters",
+    Options = { "All", "Baby Sand Mammoth","Bantae","Banto","Barbarian","Big Stone Shelly","Black Ant","Crystal Bantae","Fire Ant","Giant","Giant Shelly","Gold Shelly","Golden Banto","Goober","Huge Ant","Iron Shelly","Lil Banto","Lurky Boi","Peeper","Penguin","Queen Ant","Queen Ant's Servant","Rentae","Rento","Sand Mammoth","Scavenger Ant","Shelbert","Shelby","Sheldon","Shellington","Shelly Spirit","Snow Mammoth","Stone Shelly","Turtle","White Ant" },
+    CurrentOptions = {},
+    Callback = function(v)
+        S.SelectedCritters = {}
+        for _, n in ipairs(v) do S.SelectedCritters[n] = true end
+    end
+})
+EspTab:CreateToggle({ Name = "Critter ESP", CurrentValue = false, Callback = function(s) S.CritterESPEnabled = s end })
+
+EspTab:CreateSection("Ore ESP")
+EspTab:CreateMultiDropdown({
+    Name = "Select Ores",
+    Options = { "Iron Node","Coal Node","Adurite Node","Gold Node","Emerald Lode","Pink Diamond Lode","Crystal Lode" },
+    CurrentOptions = { "Iron Node","Coal Node","Adurite Node","Gold Node","Emerald Lode","Pink Diamond Lode","Crystal Lode" },
+    Callback = function(v)
+        S.SelectedOres = {}
+        for _, n in ipairs(v) do S.SelectedOres[n] = true end
+    end
+})
+EspTab:CreateToggle({ Name = "Ore ESP", CurrentValue = false, Callback = function(s) S.OreESPEnabled = s end })
+
+EspTab:CreateSection("Item ESP")
+EspTab:CreateInput({ Name = "Item Name Filter", CurrentValue = "", Callback = function(v) S.ItemESPQuery = v end })
+EspTab:CreateToggle({ Name = "Item ESP", CurrentValue = false, Callback = function(s) S.ItemESPEnabled = s end })
+
+EspTab:CreateSection("Boss / Misc ESP")
+EspTab:CreateMultiDropdown({
+    Name = "God Bosses",
+    Options = { "Ancient God","Furious God","Hateful God","Lonely God","Miserable God","Old God","Sleeping God","Wealthy God" },
+    CurrentOptions = {},
+    Callback = function(v)
+        S.SelectedGodBosses = {}
+        for _, n in ipairs(v) do S.SelectedGodBosses[n] = true end
+    end
+})
+EspTab:CreateToggle({ Name = "God Boss ESP", CurrentValue = false, Callback = function(s) S.GodBossESPEnabled = s end })
+EspTab:CreateToggle({ Name = "Meteor Core ESP", CurrentValue = false, Callback = function(s) S.MeteorCoreESPEnabled = s end })
+EspTab:CreateToggle({ Name = "Wandering Trader ESP", CurrentValue = false, Callback = function(s) S.WanderingTraderESPEnabled = s end })
+EspTab:CreateToggle({ Name = "Tribe Totem ESP", CurrentValue = false, Callback = function(s) S.TribeTotemESPEnabled = s end })
+
+-- ========== Settings tab ==========
+local SettingsTab = Window:CreateTab("Settings", 4483362458)
+
+SettingsTab:CreateSection("Staff")
+SettingsTab:CreateToggle({ Name = "Staff Detections", CurrentValue = false, Callback = function(s) S.StaffDetectionsEnabled = s end })
+SettingsTab:CreateToggle({ Name = "Leave On Staff Detected", CurrentValue = false, Callback = function(s) S.LeaveOnStaff = s end })
+
+SettingsTab:CreateSection("FPS / Performance")
+SettingsTab:CreateButton({ Name = "FPS+ Ultra (Nuke Graphics)", Callback = function()
+    task.spawn(function()
+        pcall(function()
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 9e9
+            Lighting.Brightness = 0
+            if settings and settings().Rendering then
+                pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+            end
+            for _, v in ipairs(Lighting:GetChildren()) do
+                if v:IsA("PostEffect") then v.Enabled = false
+                elseif v:IsA("Sky") or v:IsA("Atmosphere") then v:Destroy() end
+            end
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") then
+                    pcall(function()
+                        if v.Parent and not v.Parent:FindFirstChild("Humanoid") then
+                            v.Material = Enum.Material.SmoothPlastic
+                            v.Reflectance = 0
+                            v.CastShadow = false
+                        end
+                    end)
+                elseif v:IsA("Decal") or v:IsA("Texture") then
+                    pcall(function() v.Transparency = 1 end)
+                elseif v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") or v:IsA("Beam") then
+                    pcall(function() v.Enabled = false end)
+                end
+            end
+        end)
+        Rayfield:Notify({ Title = "FPS+ Applied", Content = "Graphics nuked", Duration = 3 })
+    end)
+end })
+
+SettingsTab:CreateSection("Anti-AFK")
+SettingsTab:CreateToggle({ Name = "Anti-AFK", CurrentValue = true, Callback = function(s) end })
+plr.Idled:Connect(function()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+end)
+
+SettingsTab:CreateSection("Zoom")
+SettingsTab:CreateSlider({ Name = "Max Zoom Distance", Range = {50, 10000}, Increment = 10, CurrentValue = 100, Callback = function(v)
+    plr.CameraMaxZoomDistance = v
+end })
+
+-- =========================================================
+--  Finish + config load
+-- =========================================================
+task.defer(function()
+    for _ = 1, 60 do
+        if next(PACKET_IDS) ~= nil then break end
+        task.wait(0.5)
+    end
+    Rayfield:LoadConfiguration()
+end)
